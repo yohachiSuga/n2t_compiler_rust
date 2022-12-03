@@ -31,10 +31,24 @@ pub enum Symbol {
     comma,
     #[strum(serialize = ";")]
     semicolon,
-    // #[strum(serialize = ".")]
-    // period,
-    // #[strum(serialize = ".")]
-    // period,
-    // #[strum(serialize = ".")]
-    // period,
+    #[strum(serialize = "+")]
+    plus,
+    #[strum(serialize = "-")]
+    minus,
+    #[strum(serialize = "*")]
+    star,
+    #[strum(serialize = "/")]
+    slash,
+    #[strum(serialize = "&")]
+    ampersand,
+    #[strum(serialize = "|")]
+    pipe,
+    #[strum(serialize = "<")]
+    lt,
+    #[strum(serialize = ">")]
+    bt,
+    #[strum(serialize = "=")]
+    equal,
+    #[strum(serialize = "~")]
+    tilde,
 }

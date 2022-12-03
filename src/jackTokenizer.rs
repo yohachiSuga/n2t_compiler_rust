@@ -16,10 +16,8 @@ use crate::{
 
 struct JackTokenizer<R: BufRead> {
     line_iter: Peekable<Lines<R>>,
-    // line_token_iter: Option<Peekable<Lines<R>>>,
-    // line: String,
-    curr_token: Option<String>,
-    line_tokens: VecDeque<String>,
+    curr_token: Option<TokenType>,
+    line_tokens: VecDeque<TokenType>,
     remover: Regex,
 }
 
@@ -31,12 +29,8 @@ where
         JackTokenizer {
             line_iter: reader.lines().peekable(),
             line_tokens: VecDeque::new(),
-            // line_token_iter: None,
-            // line: String::new(),
             curr_token: None,
             remover: Regex::new(r"/\*[\s\S]*?\*/|//.*").unwrap(),
-            // remover: Regex::new(r"^(.*)(//)?.*").unwrap(),
-            // remover: Regex::new(r"^(.*)//.*").unwrap(),
         }
     }
 
@@ -60,17 +54,23 @@ where
 
         let mut token_cand = String::with_capacity(30);
         for c in input.chars() {
-            if (is_string_const) {
-                token_cand.push(c);
+            if is_string_const {
                 if c == '"' {
                     is_string_const = false;
+                    debug!("END STRING CONSTANT:{token_cand}");
                     found_tokens.push_back(TokenType::STRING_CONST(token_cand.clone()));
                     token_cand.clear();
                     continue;
                 }
+
+                token_cand.push(c);
+                continue;
             }
 
-            if (c.is_whitespace()) {
+            if c.is_whitespace() {
+                if token_cand.len() == 0 {
+                    continue;
+                }
                 // put stacked element
                 let token = self.handlePreDelimiter(&token_cand);
                 found_tokens.push_back(token);
@@ -78,13 +78,14 @@ where
                 continue;
             }
 
-            if (c == '"') {
+            if c == '"' {
+                debug!("start STRING CONSTANT:{token_cand}");
                 is_string_const = true;
                 continue;
             }
 
             let c_string = c.to_string();
-            if (Symbol::from_str(&c_string).is_ok()) {
+            if Symbol::from_str(&c_string).is_ok() {
                 if !token_cand.is_empty() {
                     // handle pre-symbol element
                     let token = self.handlePreDelimiter(&token_cand);
@@ -100,7 +101,7 @@ where
         }
 
         if is_string_const {
-            panic!("string does not terminate.");
+            panic!("string does not terminate. something wrong??");
         }
         found_tokens
     }
@@ -114,41 +115,35 @@ where
                 return false;
             } else {
                 // need to take care comment sentence after final code block
+                let mut is_multiple_line_comment = false;
                 loop {
                     match self.line_iter.next() {
                         Some(line) => match line {
                             Ok(line) => {
                                 let trimmed_line = line.trim();
-                                // TODO: remove multiline-comments
                                 let replaced = self.remover.replace_all(trimmed_line, "");
                                 let replaced = replaced.trim();
+
                                 if !replaced.is_empty() {
-                                    let mut tokens = VecDeque::new();
-                                    let mut c = replaced.chars();
-                                    loop {
-                                        let mut token_cand = String::new();
-                                        match c.next() {
-                                            Some(character) => {
-                                                if (character.is_whitespace()) {
-                                                    debug!(
-                                                        "insert token {} skip white space",
-                                                        token_cand
-                                                    );
-                                                    tokens.push_back(token_cand.clone());
-                                                    token_cand.clear();
-                                                } else {
-                                                    token_cand.push(character);
-                                                }
-                                            }
-                                            None => break,
-                                        }
+                                    // TODO: multiline-comments
+                                    if replaced.starts_with("/**") {
+                                        is_multiple_line_comment = true;
+                                    }
+                                    if replaced.ends_with("*/") {
+                                        is_multiple_line_comment = false;
+                                        continue;
+                                    }
+                                    if is_multiple_line_comment {
+                                        debug!("skip multiple line comments");
+                                        continue;
                                     }
 
-                                    self.line_tokens = tokens;
+                                    // fill line_tokens
+                                    self.line_tokens.extend(self.generateTokens(replaced));
                                     debug!("set line tokens {:?}", self.line_tokens);
                                     return true;
                                 } else {
-                                    info!("token is empty.");
+                                    debug!("commented line.");
                                 }
                             }
                             Err(_) => {
@@ -178,40 +173,100 @@ where
             }
         }
         self.curr_token = self.line_tokens.pop_front();
-        debug!("current token:{:?}", self.curr_token);
+        info!("current token:{:?}", self.curr_token);
     }
 
-    fn tokenType() -> tokenType::TokenType {
-        todo!()
+    fn tokenType(&self) -> &tokenType::TokenType {
+        match &self.curr_token {
+            Some(curr_token) => &curr_token,
+            None => {
+                panic!("not have current token");
+            }
+        }
     }
 
-    fn keyword() -> KeyWord {
-        todo!()
+    fn keyword(&self) -> &KeyWord {
+        match &self.curr_token {
+            Some(curr_token) => match curr_token {
+                TokenType::KEYWORD(key) => key,
+                _ => {
+                    panic!("do not called keyword")
+                }
+            },
+            None => {
+                panic!("not have current token");
+            }
+        }
     }
 
-    fn symbol() -> String {
-        todo!()
+    fn symbol(&self) -> String {
+        match &self.curr_token {
+            Some(curr_token) => match curr_token {
+                TokenType::SYMBOL(string) => string.to_string(),
+                _ => {
+                    panic!("do not called keyword")
+                }
+            },
+            None => {
+                panic!("not have current token");
+            }
+        }
     }
 
-    fn identifier() -> String {
-        todo!()
+    fn identifier(&self) -> String {
+        match &self.curr_token {
+            Some(curr_token) => match curr_token {
+                TokenType::IDENTIFIER(string) => string.to_string(),
+                _ => {
+                    panic!("do not called keyword")
+                }
+            },
+            None => {
+                panic!("not have current token");
+            }
+        }
     }
 
-    fn intVal() -> i64 {
-        todo!()
+    fn intVal(&self) -> u64 {
+        match &self.curr_token {
+            Some(curr_token) => match curr_token {
+                TokenType::INT_CONST(num) => *num,
+                _ => {
+                    panic!("do not called keyword")
+                }
+            },
+            None => {
+                panic!("not have current token");
+            }
+        }
     }
 
-    fn stringVal() -> String {
-        todo!()
+    fn stringVal(&self) -> &String {
+        match &self.curr_token {
+            Some(curr_token) => match curr_token {
+                TokenType::STRING_CONST(string) => string,
+                _ => {
+                    panic!("do not called keyword")
+                }
+            },
+            None => {
+                panic!("not have current token");
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{fs::File, io::BufReader};
+    use std::{
+        fs::File,
+        io::{BufReader, BufWriter, LineWriter, Write},
+    };
 
     use log::info;
     use regex::Regex;
+
+    use crate::tokenType::TokenType;
 
     use super::JackTokenizer;
 
@@ -254,7 +309,15 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenizer() {
+    fn test_remove_comment() {
+        env_logger::init();
+        let file = File::open("./Square/SquareGame.jack").unwrap();
+        let reader = BufReader::new(file);
+        let mut tokenizer = JackTokenizer::new(reader);
+    }
+
+    #[test]
+    fn test_generate_token() {
         env_logger::init();
         let file = File::open("./ArrayTest/Main.jack").unwrap();
         let reader = BufReader::new(file);
@@ -266,16 +329,91 @@ mod tests {
         let token = tokenizer.generateTokens("int main();");
         info!("{:?}", token);
         assert_eq!(token.len(), 5);
+
+        let token =
+            tokenizer.generateTokens("let a[i] = Keyboard.readInt(\"ENTER THE NEXT NUMBER: \");");
+        info!("{:?}", token);
+        assert_eq!(token.len(), 13);
+    }
+
+    fn escape_xml_attribute(input: &str) -> &str {
+        if input == "<" {
+            return "&lt;";
+        }
+        if input == ">" {
+            return "&gt;";
+        }
+        if input == "&" {
+            return "&amp;";
+        }
+        return input;
     }
 
     #[test]
-    fn test_simple() {
+    fn test_tokenizer() {
         env_logger::init();
-        let file = File::open("./ArrayTest/Main.jack").unwrap();
-        let reader = BufReader::new(file);
-        let mut tokenizer = JackTokenizer::new(reader);
-        while (tokenizer.hasMoreTokens()) {
-            tokenizer.advance();
+
+        let src_files = vec![
+            // "./ArrayTest/Main.jack",
+            // "./Square/Main.jack",
+            // "./Square/Square.jack",
+            "./Square/SquareGame.jack",
+        ];
+        for src_file_path in src_files {
+            let src_file = File::open(src_file_path).unwrap();
+            let out_file = File::create(format!("{src_file_path}.out.xml")).unwrap();
+
+            let reader = BufReader::new(src_file);
+            let mut tokenizer = JackTokenizer::new(reader);
+
+            let mut writer = LineWriter::new(out_file);
+            writer.write("<tokens>\n".to_string().as_bytes()).unwrap();
+            while tokenizer.hasMoreTokens() {
+                tokenizer.advance();
+                let token_type = tokenizer.tokenType();
+                match token_type {
+                    TokenType::KEYWORD(key) => {
+                        writer
+                            .write(format!("<keyword> {} </keyword>\n", key.to_string()).as_bytes())
+                            .unwrap();
+                    }
+                    TokenType::SYMBOL(symbol) => {
+                        writer
+                            .write(
+                                format!(
+                                    "<symbol> {} </symbol>\n",
+                                    escape_xml_attribute(&symbol.to_string())
+                                )
+                                .as_bytes(),
+                            )
+                            .unwrap();
+                    }
+                    TokenType::IDENTIFIER(identifier) => {
+                        writer
+                            .write(
+                                format!("<identifier> {} </identifier>\n", identifier).as_bytes(),
+                            )
+                            .unwrap();
+                    }
+                    TokenType::INT_CONST(num) => {
+                        writer
+                            .write(
+                                format!("<integerConstant> {} </integerConstant>\n", num)
+                                    .as_bytes(),
+                            )
+                            .unwrap();
+                    }
+                    TokenType::STRING_CONST(string) => {
+                        writer
+                            .write(
+                                format!("<stringConstant> {} </stringConstant>\n", string)
+                                    .as_bytes(),
+                            )
+                            .unwrap();
+                    }
+                }
+            }
+            writer.write("</tokens>".to_string().as_bytes()).unwrap();
         }
     }
 }
