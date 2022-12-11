@@ -125,7 +125,6 @@ where
                                 let replaced = replaced.trim();
 
                                 if !replaced.is_empty() {
-                                    // TODO: multiline-comments
                                     if replaced.starts_with("/**") {
                                         is_multiple_line_comment = true;
                                     }
@@ -261,6 +260,7 @@ mod tests {
     use std::{
         fs::File,
         io::{BufReader, BufWriter, LineWriter, Write},
+        process::{Command, ExitStatus},
     };
 
     use log::info;
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_remove_comment() {
-        env_logger::init();
+        // env_logger::init();
         let file = File::open("./Square/SquareGame.jack").unwrap();
         let reader = BufReader::new(file);
         let mut tokenizer = JackTokenizer::new(reader);
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_generate_token() {
-        env_logger::init();
+        // env_logger::init();
         let file = File::open("./ArrayTest/Main.jack").unwrap();
         let reader = BufReader::new(file);
         let mut tokenizer = JackTokenizer::new(reader);
@@ -354,14 +354,22 @@ mod tests {
         env_logger::init();
 
         let src_files = vec![
-            // "./ArrayTest/Main.jack",
-            // "./Square/Main.jack",
-            // "./Square/Square.jack",
+            "./ArrayTest/Main.jack",
+            "./Square/Main.jack",
+            "./Square/Square.jack",
             "./Square/SquareGame.jack",
         ];
-        for src_file_path in src_files {
+
+        let comp_files = vec![
+            "./ArrayTest/MainT.xml",
+            "./Square/MainT.xml",
+            "./Square/SquareT.xml",
+            "./Square/SquareGameT.xml",
+        ];
+        for (i, src_file_path) in src_files.iter().enumerate() {
             let src_file = File::open(src_file_path).unwrap();
-            let out_file = File::create(format!("{src_file_path}.out.xml")).unwrap();
+            let out_file_path = format!("{src_file_path}.out.xml");
+            let out_file = File::create(&out_file_path).unwrap();
 
             let reader = BufReader::new(src_file);
             let mut tokenizer = JackTokenizer::new(reader);
@@ -414,6 +422,12 @@ mod tests {
                 }
             }
             writer.write("</tokens>".to_string().as_bytes()).unwrap();
+            writer.flush().unwrap();
+
+            println!("compare {out_file_path} with {}", comp_files[i]);
+            let mut cmd = Command::new("diff");
+            cmd.args(["-w", &out_file_path, comp_files[i]]);
+            assert!(cmd.status().unwrap().success());
         }
     }
 }
