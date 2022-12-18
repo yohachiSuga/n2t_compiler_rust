@@ -2,6 +2,7 @@ use std::{
     collections::VecDeque,
     io::{BufRead, Lines, Read},
     iter::Peekable,
+    mem::swap,
     str::FromStr,
 };
 
@@ -14,8 +15,9 @@ use crate::{
     tokenType::{self, TokenType},
 };
 
-struct JackTokenizer<R: BufRead> {
+pub struct JackTokenizer<R: BufRead> {
     line_iter: Peekable<Lines<R>>,
+    prev_token: Option<TokenType>, // for backtrack
     curr_token: Option<TokenType>,
     line_tokens: VecDeque<TokenType>,
     remover: Regex,
@@ -25,10 +27,11 @@ impl<R> JackTokenizer<R>
 where
     R: Read + BufRead,
 {
-    fn new(reader: R) -> JackTokenizer<R> {
+    pub fn new(reader: R) -> JackTokenizer<R> {
         JackTokenizer {
             line_iter: reader.lines().peekable(),
             line_tokens: VecDeque::new(),
+            prev_token: None,
             curr_token: None,
             remover: Regex::new(r"/\*[\s\S]*?\*/|//.*").unwrap(),
         }
@@ -106,7 +109,7 @@ where
         found_tokens
     }
 
-    fn hasMoreTokens(&mut self) -> bool {
+    pub fn hasMoreTokens(&mut self) -> bool {
         if !self.line_tokens.is_empty() {
             return true;
         }
@@ -162,7 +165,7 @@ where
         return false;
     }
 
-    fn advance(&mut self) {
+    pub fn advance(&mut self) {
         if self.line_tokens.is_empty() {
             if self.hasMoreTokens() {
                 info!("set token");
@@ -171,11 +174,22 @@ where
                 return;
             }
         }
+
+        // set to swap
+        swap(&mut self.prev_token, &mut self.curr_token);
         self.curr_token = self.line_tokens.pop_front();
         info!("current token:{:?}", self.curr_token);
     }
 
-    fn tokenType(&self) -> &tokenType::TokenType {
+    pub fn back(&mut self) {
+        if self.prev_token.is_none() {
+            panic!("do not call. no previous token.");
+        }
+        swap(&mut self.prev_token, &mut self.curr_token);
+        self.prev_token = None;
+    }
+
+    pub fn tokenType(&self) -> &tokenType::TokenType {
         match &self.curr_token {
             Some(curr_token) => &curr_token,
             None => {
