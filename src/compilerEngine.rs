@@ -3,7 +3,7 @@ use std::{
     io::{BufRead, Read, Write},
 };
 
-use log::info;
+use log::{debug, info};
 
 use crate::{
     jackTokenizer::JackTokenizer,
@@ -190,8 +190,10 @@ where
             Symbol::left_curly_bracket.to_string()
         );
 
+        // classvarDec*
         self.compileClassVarDec();
-        // TODO: subroutineDec*
+        // subroutineDec*
+        self.compileSubroutineDecList();
 
         advance_and_write_symbol!(
             self,
@@ -218,6 +220,7 @@ where
         info!("parse classVarDec ");
         while self.checkClassVarDec() {
             self.tokenizer.advance();
+            debug!("classVarDec {:?}", self.tokenizer.tokenType());
             match self.tokenizer.tokenType() {
                 TokenType::KEYWORD(keyword) => match keyword {
                     KeyWord::STATIC | KeyWord::FIELD => {
@@ -361,6 +364,34 @@ where
                 panic!("not keyword")
             }
         }
+    }
+
+    fn compileVarDecList(&mut self) {
+        while self.checkVarDec() {
+            self.compileClassVarDec();
+        }
+    }
+
+    fn checkVarDec(&mut self) -> bool {
+        advance_token!(self.tokenizer);
+        let result = match self.tokenizer.tokenType() {
+            TokenType::KEYWORD(keyword) => match keyword {
+                KeyWord::VAR => true,
+                _ => false,
+            },
+            _ => false,
+        };
+
+        self.tokenizer.back();
+        result
+    }
+
+    fn compileVarDec(&mut self) {
+        // var type varname (,varname)* ;
+        advance_and_write_keyword!(self, KeyWord::VAR, KeyWord::VAR.to_string());
+        self.compileType();
+        self.compileVarNameList();
+        advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
     }
 
     fn compileVarNameList(&mut self) {
@@ -547,6 +578,25 @@ where
         }
     }
 
+    fn compileSubroutineDecList(&mut self) {
+        while self.checkSubroutineDec() {
+            self.compileSubroutineDec();
+        }
+    }
+
+    fn checkSubroutineDec(&mut self) -> bool {
+        advance_token!(self.tokenizer);
+        let ret = match self.tokenizer.tokenType() {
+            TokenType::KEYWORD(keyword) => match keyword {
+                KeyWord::METHOD | KeyWord::FUNCTION | KeyWord::CONSTRUCTOR => true,
+                _ => false,
+            },
+            _ => false,
+        };
+        self.tokenizer.back();
+        ret
+    }
+
     fn compileSubroutineDec(&mut self) {
         // A B name (params) body
         info!("compile subroutineDec");
@@ -586,6 +636,7 @@ where
 
         self.compileParameterList();
 
+        // TODO: fail here
         advance_and_write_symbol!(
             self,
             Symbol::right_bracket,
@@ -640,7 +691,23 @@ where
     }
 
     fn compileSubRoutineBody(&mut self) {
-        todo!();
+        info!("parse subroutine body");
+        advance_and_write_symbol!(
+            self,
+            Symbol::left_curly_bracket,
+            Symbol::left_curly_bracket.to_string()
+        );
+
+        // varDec*
+        self.compileVarDecList();
+        // statements
+        self.compileStatements();
+
+        advance_and_write_symbol!(
+            self,
+            Symbol::right_curly_bracket,
+            Symbol::right_curly_bracket.to_string()
+        );
     }
 
     fn compileReturnStatement(&mut self, keyword: &str) {
@@ -708,6 +775,21 @@ where
 }
 #[cfg(test)]
 mod tests {
+    use std::{
+        fs::File,
+        io::{BufReader, BufWriter},
+    };
+
+    use super::CompilerEngine;
+
     #[test]
-    fn test_compiler_engine() {}
+    fn test_compiler_engine() {
+        env_logger::init();
+        let file = File::open("./ExpressionLessSquare/Main.jack").unwrap();
+        let reader = BufReader::new(file);
+        let file = File::create("./ExpressionLessSquare/Main.out.xml").unwrap();
+        let writer = BufWriter::new(file);
+        let mut engine = CompilerEngine::new(reader, writer);
+        engine.compileClass();
+    }
 }

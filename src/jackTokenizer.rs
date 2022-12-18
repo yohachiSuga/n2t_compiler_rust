@@ -186,7 +186,8 @@ where
             panic!("do not call. no previous token.");
         }
         swap(&mut self.prev_token, &mut self.curr_token);
-        self.prev_token = None;
+        let token = self.prev_token.take();
+        self.line_tokens.push_front(token.unwrap());
     }
 
     pub fn tokenType(&self) -> &tokenType::TokenType {
