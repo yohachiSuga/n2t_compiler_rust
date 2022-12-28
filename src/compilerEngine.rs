@@ -1,7 +1,4 @@
-use std::{
-    f32::consts::E,
-    io::{BufRead, Read, Write},
-};
+use std::io::{BufRead, Read, Write};
 
 use log::{debug, info};
 
@@ -103,6 +100,21 @@ macro_rules! advance_and_write_identifier {
     };
 }
 
+macro_rules! write_xml_start_tag {
+    ($writer:expr,$tag_name:expr) => {
+        $writer
+            .write(format!("<{}>\n", $tag_name,).as_bytes())
+            .unwrap();
+    };
+}
+macro_rules! write_xml_end_tag {
+    ($writer:expr,$tag_name:expr) => {
+        $writer
+            .write(format!("</{}>\n", $tag_name,).as_bytes())
+            .unwrap();
+    };
+}
+
 macro_rules! write_xml {
     ($writer:expr,$symbol:expr,$tag_name:expr) => {
         $writer
@@ -180,6 +192,8 @@ where
 
     pub fn compileClass(&mut self) {
         info!("parse class ");
+        write_xml_start_tag!(self.writer, KeyWord::CLASS);
+
         advance_and_write_keyword!(self, KeyWord::CLASS, KeyWord::CLASS.to_string());
 
         self.compileClassName();
@@ -200,6 +214,8 @@ where
             Symbol::right_curly_bracket,
             Symbol::right_curly_bracket.to_string()
         );
+
+        write_xml_end_tag!(self.writer, KeyWord::CLASS);
     }
 
     fn checkClassVarDec(&mut self) -> bool {
@@ -216,8 +232,10 @@ where
     }
 
     fn compileClassVarDec(&mut self) {
+        let tagname = "classVarDec";
         // (static|field) type varName (,varName*);
         info!("parse classVarDec ");
+        write_xml_start_tag!(self.writer, &tagname);
         while self.checkClassVarDec() {
             self.tokenizer.advance();
             debug!("classVarDec {:?}", self.tokenizer.tokenType());
@@ -245,6 +263,21 @@ where
                 }
             }
         }
+        write_xml_end_tag!(self.writer, &tagname);
+    }
+
+    fn checkVoid(&mut self) -> bool {
+        self.tokenizer.advance();
+        let result = match self.tokenizer.tokenType() {
+            TokenType::KEYWORD(keyword) => match keyword {
+                KeyWord::VOID => true,
+                _ => false,
+            },
+            TokenType::IDENTIFIER(_) => false,
+            _ => false,
+        };
+        self.tokenizer.back();
+        return result;
     }
 
     fn checkType(&mut self) -> bool {
@@ -283,6 +316,8 @@ where
 
     fn compileStatements(&mut self) {
         // => if tokenType os not keyword, exit
+        let tagname = "statements";
+        write_xml_start_tag!(self.writer, tagname);
         loop {
             self.tokenizer.advance();
             if self.tokenizer.hasMoreTokens() {
@@ -296,21 +331,29 @@ where
                             self.parseStatement();
                         }
                         _ => {
-                            info!("compile Statements, get not statement keyword");
+                            info!(
+                                "compile Statements, get not statement keyword: input:{:?}",
+                                keyword
+                            );
+                            self.tokenizer.back();
                             break;
                         }
                     },
                     _ => {
-                        info!("compile Statements, not keyword");
+                        info!(
+                            "compile Statements, not keyword : input:{:?}",
+                            self.tokenizer.tokenType()
+                        );
+                        self.tokenizer.back();
                         break;
                     }
                 }
-                self.parseStatement();
             } else {
                 info!("parse statements but no more tokens");
                 break;
             }
         }
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn parseWhileAndIf(&mut self, keyword: &str) {
@@ -361,15 +404,18 @@ where
                 }
             },
             _ => {
-                panic!("not keyword")
+                panic!("not keyword token {:?}", self.tokenizer.tokenType())
             }
         }
     }
 
     fn compileVarDecList(&mut self) {
+        let tagname = "varDec";
+        write_xml_start_tag!(self.writer, tagname);
         while self.checkVarDec() {
-            self.compileClassVarDec();
+            self.compileVarDec();
         }
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn checkVarDec(&mut self) -> bool {
@@ -441,6 +487,8 @@ where
     fn compileLetStatement(&mut self, keyword: &str) {
         // let varName ( [exp])? = exp;
         info!("parse let");
+        let tagname = "letStatement";
+        write_xml_start_tag!(self.writer, tagname);
         write_keyword_xml!(self.writer, keyword.to_string());
 
         self.compileVarName();
@@ -482,11 +530,14 @@ where
         self.compileExpression();
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileIfStatement(&mut self, keyword: &str) {
         // if (exp) {states} (else {states})?
         info!("parse if ");
+        let tagname = "ifStatement";
+        write_xml_start_tag!(self.writer, tagname);
         self.parseWhileAndIf(&keyword.to_string());
 
         // check else
@@ -522,27 +573,37 @@ where
                 info!("no keyword after if.");
             }
         }
+        write_xml_end_tag!(self.writer, tagname);
     }
+
     fn compileWhileStatement(&mut self, keyword: &str) {
         // while (exp){states}
+        let tagname = "whileStatement";
+        write_xml_start_tag!(self.writer, tagname);
         self.parseWhileAndIf(&keyword.to_string());
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileDoStatement(&mut self, keyword: &str) {
         info!("parse do");
+        let tagname = "doStatement";
+        write_xml_start_tag!(self.writer, tagname);
         write_keyword_xml!(self.writer, keyword.to_string());
 
         self.compileSubroutineCall();
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn checkParameterList(&mut self) -> bool {
-        true
+        self.checkType()
     }
 
     fn compileParameterList(&mut self) {
         // type name(, type name)*
+        let tagname = "parameterList";
+        write_xml_start_tag!(self.writer, tagname);
         while self.checkParameterList() {
             self.compileType();
             self.compileVarName();
@@ -564,6 +625,7 @@ where
                 }
             }
         }
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileSubroutineName(&mut self) {
@@ -573,7 +635,10 @@ where
                 write_identifier_xml!(self.writer, id);
             }
             _ => {
-                panic!("not acceptable token type for subroutineName");
+                panic!(
+                    "not acceptable token type for subroutineName {:?}",
+                    self.tokenizer.tokenType()
+                );
             }
         }
     }
@@ -600,6 +665,8 @@ where
     fn compileSubroutineDec(&mut self) {
         // A B name (params) body
         info!("compile subroutineDec");
+        let tagname = "subroutineDec";
+        write_xml_start_tag!(self.writer, tagname);
         advance_token!(self.tokenizer);
         match self.tokenizer.tokenType() {
             TokenType::KEYWORD(keyword) => match keyword {
@@ -615,19 +682,10 @@ where
             }
         }
 
-        advance_token!(self.tokenizer);
-        let is_void = match self.tokenizer.tokenType() {
-            TokenType::KEYWORD(keyword) => match keyword {
-                KeyWord::VOID => {
-                    write_keyword_xml!(self.writer, keyword);
-                    true
-                }
-                _ => false,
-            },
-            _ => false,
-        };
-        if !is_void {
-            //
+        if self.checkVoid() {
+            advance_token!(self.tokenizer);
+            write_keyword_xml!(self.writer, KeyWord::VOID);
+        } else {
             self.compileType();
         }
         self.compileSubroutineName();
@@ -644,6 +702,7 @@ where
         );
 
         self.compileSubRoutineBody();
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileSubroutineCall(&mut self) {
@@ -663,8 +722,9 @@ where
 
                     self.compileSubroutineName();
 
-                    advance_and_write_symbol!(
-                        self,
+                    advance_token!(self.tokenizer);
+                    symbol_check!(
+                        self.tokenizer,
                         Symbol::left_bracket,
                         Symbol::left_bracket.to_string()
                     );
@@ -692,6 +752,9 @@ where
 
     fn compileSubRoutineBody(&mut self) {
         info!("parse subroutine body");
+        let tagname = "subroutineBody";
+        write_xml_start_tag!(self.writer, tagname);
+
         advance_and_write_symbol!(
             self,
             Symbol::left_curly_bracket,
@@ -708,27 +771,23 @@ where
             Symbol::right_curly_bracket,
             Symbol::right_curly_bracket.to_string()
         );
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileReturnStatement(&mut self, keyword: &str) {
         // return exp? ;
         info!("parse return");
+        let tagname = "returnStatement";
+        write_xml_start_tag!(self.writer, tagname);
         write_keyword_xml!(self.writer, keyword.to_string());
 
         // pre-read
-        if self.checkTerm() {
-            self.tokenizer.back();
+        if self.checkExpression() {
             self.compileTerm();
-        } else {
-            self.tokenizer.back();
         }
 
-        let semicolon = symbol_check!(
-            self.tokenizer,
-            Symbol::semicolon,
-            Symbol::semicolon.to_string()
-        );
-        write_symbol_xml!(self.writer, semicolon);
+        advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn checkExpression(&mut self) -> bool {
@@ -737,17 +796,26 @@ where
 
     fn compileExpression(&mut self) {
         // For subject-1, need to support only varname
+        let tagname = "expression";
+        write_xml_start_tag!(self.writer, tagname);
         self.compileTerm();
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileExpressionList(&mut self) {
+        let tagname = "expressionList";
+        write_xml_start_tag!(self.writer, tagname);
+
         // through-pass
-        // todo!();
+        // TODO:();
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileTerm(&mut self) {
         // term (op term)*
         // TODO: support only identifier
+        let tagname = "term";
+        write_xml_start_tag!(self.writer, tagname);
         advance_token!(self.tokenizer);
         match self.tokenizer.tokenType() {
             TokenType::IDENTIFIER(identifier) => {
@@ -757,20 +825,19 @@ where
                 panic!("not identifier");
             }
         }
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn checkTerm(&mut self) -> bool {
         // term (op term)*
         // TODO: support only identifier
         advance_token!(self.tokenizer);
-        match self.tokenizer.tokenType() {
-            TokenType::IDENTIFIER(identifier) => {
-                return true;
-            }
-            _ => {
-                return false;
-            }
-        }
+        let result = match self.tokenizer.tokenType() {
+            TokenType::IDENTIFIER(_) => true,
+            _ => false,
+        };
+        self.tokenizer.back();
+        result
     }
 }
 #[cfg(test)]
@@ -785,11 +852,23 @@ mod tests {
     #[test]
     fn test_compiler_engine() {
         env_logger::init();
-        let file = File::open("./ExpressionLessSquare/Main.jack").unwrap();
-        let reader = BufReader::new(file);
-        let file = File::create("./ExpressionLessSquare/Main.out.xml").unwrap();
-        let writer = BufWriter::new(file);
-        let mut engine = CompilerEngine::new(reader, writer);
-        engine.compileClass();
+        let inputs = vec![
+            "./ExpressionLessSquare/Main.jack",
+            // "./ExpressionLessSquare/Square.jack",
+            // "./ExpressionLessSquare/SquareGame.jack",
+        ];
+
+        let outputs = vec![
+            "./ExpressionLessSquare/Main.out.xml",
+            // "./ExpressionLessSquare/Square.out.xml",
+            // "./ExpressionLessSquare/SquareGame.out.xml",
+        ];
+
+        for (i, input) in inputs.iter().enumerate() {
+            let reader = BufReader::new(File::open(input).unwrap());
+            let writer = BufWriter::new(File::create(outputs.get(i).unwrap()).unwrap());
+            let mut engine = CompilerEngine::new(reader, writer);
+            engine.compileClass();
+        }
     }
 }
