@@ -235,10 +235,10 @@ where
         let tagname = "classVarDec";
         // (static|field) type varName (,varName*);
         info!("parse classVarDec ");
-        write_xml_start_tag!(self.writer, &tagname);
         while self.checkClassVarDec() {
             self.tokenizer.advance();
             debug!("classVarDec {:?}", self.tokenizer.tokenType());
+            write_xml_start_tag!(self.writer, &tagname);
             match self.tokenizer.tokenType() {
                 TokenType::KEYWORD(keyword) => match keyword {
                     KeyWord::STATIC | KeyWord::FIELD => {
@@ -262,8 +262,8 @@ where
                     panic!("only keyword is acceptable.")
                 }
             }
+            write_xml_end_tag!(self.writer, &tagname);
         }
-        write_xml_end_tag!(self.writer, &tagname);
     }
 
     fn checkVoid(&mut self) -> bool {
@@ -410,12 +410,9 @@ where
     }
 
     fn compileVarDecList(&mut self) {
-        let tagname = "varDec";
-        write_xml_start_tag!(self.writer, tagname);
         while self.checkVarDec() {
             self.compileVarDec();
         }
-        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn checkVarDec(&mut self) -> bool {
@@ -434,10 +431,13 @@ where
 
     fn compileVarDec(&mut self) {
         // var type varname (,varname)* ;
+        let tagname = "varDec";
+        write_xml_start_tag!(self.writer, tagname);
         advance_and_write_keyword!(self, KeyWord::VAR, KeyWord::VAR.to_string());
         self.compileType();
         self.compileVarNameList();
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
+        write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileVarNameList(&mut self) {
@@ -457,7 +457,7 @@ where
             match self.tokenizer.tokenType() {
                 TokenType::SYMBOL(symbol) => match symbol {
                     Symbol::comma => {
-                        write_identifier_xml!(self.writer, symbol);
+                        write_symbol_xml!(self.writer, symbol);
                     }
                     _ => {
                         self.tokenizer.back();
@@ -612,7 +612,7 @@ where
             match self.tokenizer.tokenType() {
                 TokenType::SYMBOL(symbol) => match symbol {
                     Symbol::comma => {
-                        write_identifier_xml!(self.writer, symbol);
+                        write_symbol_xml!(self.writer, symbol);
                     }
                     _ => {
                         self.tokenizer.back();
@@ -783,7 +783,7 @@ where
 
         // pre-read
         if self.checkExpression() {
-            self.compileTerm();
+            self.compileExpression();
         }
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
@@ -796,6 +796,7 @@ where
 
     fn compileExpression(&mut self) {
         // For subject-1, need to support only varname
+        info!("parse expression");
         let tagname = "expression";
         write_xml_start_tag!(self.writer, tagname);
         self.compileTerm();
@@ -803,23 +804,50 @@ where
     }
 
     fn compileExpressionList(&mut self) {
+        info!("parse expressionList");
         let tagname = "expressionList";
         write_xml_start_tag!(self.writer, tagname);
 
-        // through-pass
-        // TODO:();
+        while self.checkExpression() {
+            self.compileExpression();
+
+            advance_token!(self.tokenizer);
+            match self.tokenizer.tokenType() {
+                TokenType::SYMBOL(symbol) => match symbol {
+                    Symbol::comma => {
+                        write_symbol_xml!(self.writer, symbol);
+                    }
+                    _ => {
+                        self.tokenizer.back();
+                        break;
+                    }
+                },
+                _ => {
+                    self.tokenizer.back();
+                    break;
+                }
+            }
+        }
+
         write_xml_end_tag!(self.writer, tagname);
     }
 
     fn compileTerm(&mut self) {
         // term (op term)*
         // TODO: support only identifier
+        info!("parse term");
         let tagname = "term";
+
         write_xml_start_tag!(self.writer, tagname);
         advance_token!(self.tokenizer);
         match self.tokenizer.tokenType() {
             TokenType::IDENTIFIER(identifier) => {
                 write_identifier_xml!(self.writer, identifier);
+            }
+            TokenType::KEYWORD(keyword) => {
+                if self.checkKeyWordConstant(keyword) {
+                    write_keyword_xml!(self.writer, keyword);
+                }
             }
             _ => {
                 panic!("not identifier");
@@ -828,12 +856,20 @@ where
         write_xml_end_tag!(self.writer, tagname);
     }
 
+    fn checkKeyWordConstant(&self, keyword: &KeyWord) -> bool {
+        match keyword {
+            KeyWord::TRUE | KeyWord::FALSE | KeyWord::NULL | KeyWord::THIS => true,
+            _ => false,
+        }
+    }
+
     fn checkTerm(&mut self) -> bool {
         // term (op term)*
         // TODO: support only identifier
         advance_token!(self.tokenizer);
         let result = match self.tokenizer.tokenType() {
             TokenType::IDENTIFIER(_) => true,
+            TokenType::KEYWORD(keyword) => self.checkKeyWordConstant(keyword),
             _ => false,
         };
         self.tokenizer.back();
@@ -845,6 +881,7 @@ mod tests {
     use std::{
         fs::File,
         io::{BufReader, BufWriter},
+        process::Command,
     };
 
     use super::CompilerEngine;
@@ -854,21 +891,32 @@ mod tests {
         env_logger::init();
         let inputs = vec![
             "./ExpressionLessSquare/Main.jack",
-            // "./ExpressionLessSquare/Square.jack",
-            // "./ExpressionLessSquare/SquareGame.jack",
+            "./ExpressionLessSquare/Square.jack",
+            "./ExpressionLessSquare/SquareGame.jack",
         ];
 
         let outputs = vec![
             "./ExpressionLessSquare/Main.out.xml",
-            // "./ExpressionLessSquare/Square.out.xml",
-            // "./ExpressionLessSquare/SquareGame.out.xml",
+            "./ExpressionLessSquare/Square.out.xml",
+            "./ExpressionLessSquare/SquareGame.out.xml",
+        ];
+
+        let comps = vec![
+            "./ExpressionLessSquare/Main.xml",
+            "./ExpressionLessSquare/Square.xml",
+            "./ExpressionLessSquare/SquareGame.xml",
         ];
 
         for (i, input) in inputs.iter().enumerate() {
             let reader = BufReader::new(File::open(input).unwrap());
             let writer = BufWriter::new(File::create(outputs.get(i).unwrap()).unwrap());
-            let mut engine = CompilerEngine::new(reader, writer);
-            engine.compileClass();
+            {
+                let mut engine = CompilerEngine::new(reader, writer);
+                engine.compileClass();
+            }
+            let mut cmd = Command::new("diff");
+            cmd.args(["-w", &outputs[i], comps[i]]);
+            assert!(cmd.status().unwrap().success());
         }
     }
 }
