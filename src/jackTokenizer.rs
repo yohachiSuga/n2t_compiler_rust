@@ -37,7 +37,7 @@ where
         }
     }
 
-    fn handlePreDelimiter(&self, token_cand: &str) -> TokenType {
+    fn handle_pre_delimiter(&self, token_cand: &str) -> TokenType {
         match token_cand.parse::<u64>() {
             Ok(num) => TokenType::INT_CONST(num),
             Err(_) => {
@@ -50,7 +50,7 @@ where
         }
     }
 
-    fn generateTokens(&self, input: &str) -> VecDeque<TokenType> {
+    fn generate_tokens(&self, input: &str) -> VecDeque<TokenType> {
         // Delimiter: whitespace or symbol
         let mut found_tokens = VecDeque::new();
         let mut is_string_const = false;
@@ -75,7 +75,7 @@ where
                     continue;
                 }
                 // put stacked element
-                let token = self.handlePreDelimiter(&token_cand);
+                let token = self.handle_pre_delimiter(&token_cand);
                 found_tokens.push_back(token);
                 token_cand.clear();
                 continue;
@@ -91,7 +91,7 @@ where
             if Symbol::from_str(&c_string).is_ok() {
                 if !token_cand.is_empty() {
                     // handle pre-symbol element
-                    let token = self.handlePreDelimiter(&token_cand);
+                    let token = self.handle_pre_delimiter(&token_cand);
                     found_tokens.push_back(token);
                     token_cand.clear();
                 }
@@ -109,7 +109,7 @@ where
         found_tokens
     }
 
-    pub fn hasMoreTokens(&mut self) -> bool {
+    pub fn has_more_tokens(&mut self) -> bool {
         if !self.line_tokens.is_empty() {
             return true;
         }
@@ -141,7 +141,7 @@ where
                                     }
 
                                     // fill line_tokens
-                                    self.line_tokens.extend(self.generateTokens(replaced));
+                                    self.line_tokens.extend(self.generate_tokens(replaced));
                                     debug!("set line tokens {:?}", self.line_tokens);
                                     return true;
                                 } else {
@@ -167,7 +167,7 @@ where
 
     pub fn advance(&mut self) {
         if self.line_tokens.is_empty() {
-            if self.hasMoreTokens() {
+            if self.has_more_tokens() {
                 info!("set token");
             } else {
                 info!("not advanced because empty.");
@@ -190,7 +190,7 @@ where
         self.line_tokens.push_front(token.unwrap());
     }
 
-    pub fn tokenType(&self) -> &tokenType::TokenType {
+    pub fn token_type(&self) -> &tokenType::TokenType {
         match &self.curr_token {
             Some(curr_token) => &curr_token,
             None => {
@@ -241,7 +241,7 @@ where
         }
     }
 
-    fn intVal(&self) -> u64 {
+    fn int_val(&self) -> u64 {
         match &self.curr_token {
             Some(curr_token) => match curr_token {
                 TokenType::INT_CONST(num) => *num,
@@ -255,7 +255,7 @@ where
         }
     }
 
-    fn stringVal(&self) -> &String {
+    fn string_val(&self) -> &String {
         match &self.curr_token {
             Some(curr_token) => match curr_token {
                 TokenType::STRING_CONST(string) => string,
@@ -337,16 +337,16 @@ mod tests {
         let file = File::open("./ArrayTest/Main.jack").unwrap();
         let reader = BufReader::new(file);
         let mut tokenizer = JackTokenizer::new(reader);
-        let token = tokenizer.generateTokens("class Array {");
+        let token = tokenizer.generate_tokens("class Array {");
         assert_eq!(token.len(), 3);
-        let token = tokenizer.generateTokens("class Array{");
+        let token = tokenizer.generate_tokens("class Array{");
         assert_eq!(token.len(), 3);
-        let token = tokenizer.generateTokens("int main();");
+        let token = tokenizer.generate_tokens("int main();");
         info!("{:?}", token);
         assert_eq!(token.len(), 5);
 
         let token =
-            tokenizer.generateTokens("let a[i] = Keyboard.readInt(\"ENTER THE NEXT NUMBER: \");");
+            tokenizer.generate_tokens("let a[i] = Keyboard.readInt(\"ENTER THE NEXT NUMBER: \");");
         info!("{:?}", token);
         assert_eq!(token.len(), 13);
     }
@@ -391,9 +391,9 @@ mod tests {
 
             let mut writer = LineWriter::new(out_file);
             writer.write("<tokens>\n".to_string().as_bytes()).unwrap();
-            while tokenizer.hasMoreTokens() {
+            while tokenizer.has_more_tokens() {
                 tokenizer.advance();
-                let token_type = tokenizer.tokenType();
+                let token_type = tokenizer.token_type();
                 match token_type {
                     TokenType::KEYWORD(key) => {
                         writer
