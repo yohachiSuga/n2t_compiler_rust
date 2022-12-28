@@ -169,7 +169,7 @@ fn escape_xml_attribute(input: &str) -> &str {
     return input;
 }
 
-struct CompilerEngine<R: BufRead, W> {
+pub struct CompilerEngine<R: BufRead, W> {
     tokenizer: JackTokenizer<R>,
     writer: W,
 }
@@ -995,24 +995,33 @@ mod tests {
     fn test_compiler_engine() {
         env_logger::init();
         let inputs = vec![
-            // "./ExpressionLessSquare/Main.jack",
-            // "./ExpressionLessSquare/Square.jack",
-            // "./ExpressionLessSquare/SquareGame.jack",
+            "./ExpressionLessSquare/Main.jack",
+            "./ExpressionLessSquare/Square.jack",
+            "./ExpressionLessSquare/SquareGame.jack",
             "./ArrayTest/Main.jack",
+            "./Square/Main.jack",
+            "./Square/Square.jack",
+            "./Square/SquareGame.jack",
         ];
 
         let outputs = vec![
-            // "./ExpressionLessSquare/Main.out.xml",
-            // "./ExpressionLessSquare/Square.out.xml",
-            // "./ExpressionLessSquare/SquareGame.out.xml",
+            "./ExpressionLessSquare/Main.out.xml",
+            "./ExpressionLessSquare/Square.out.xml",
+            "./ExpressionLessSquare/SquareGame.out.xml",
             "./ArrayTest/Main.out.xml",
+            "./Square/Main.out.xml",
+            "./Square/Square.out.xml",
+            "./Square/SquareGame.out.xml",
         ];
 
         let comps = vec![
-            // "./ExpressionLessSquare/Main.xml",
-            // "./ExpressionLessSquare/Square.xml",
-            // "./ExpressionLessSquare/SquareGame.xml",
+            "./ExpressionLessSquare/Main.xml",
+            "./ExpressionLessSquare/Square.xml",
+            "./ExpressionLessSquare/SquareGame.xml",
             "./ArrayTest/Main.xml",
+            "./Square/Main.xml",
+            "./Square/Square.xml",
+            "./Square/SquareGame.xml",
         ];
 
         for (i, input) in inputs.iter().enumerate() {
