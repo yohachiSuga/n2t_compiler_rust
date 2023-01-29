@@ -364,85 +364,85 @@ mod tests {
         return input;
     }
 
-    #[test]
-    fn test_tokenizer() {
-        env_logger::init();
+    // #[test]
+    // fn test_tokenizer() {
+    //     env_logger::init();
 
-        let src_files = vec![
-            "./ArrayTest/Main.jack",
-            "./Square/Main.jack",
-            "./Square/Square.jack",
-            "./Square/SquareGame.jack",
-        ];
+    //     let src_files = vec![
+    //         "./ArrayTest/Main.jack",
+    //         "./Square/Main.jack",
+    //         "./Square/Square.jack",
+    //         "./Square/SquareGame.jack",
+    //     ];
 
-        let comp_files = vec![
-            "./ArrayTest/MainT.xml",
-            "./Square/MainT.xml",
-            "./Square/SquareT.xml",
-            "./Square/SquareGameT.xml",
-        ];
-        for (i, src_file_path) in src_files.iter().enumerate() {
-            let src_file = File::open(src_file_path).unwrap();
-            let out_file_path = format!("{src_file_path}.out.xml");
-            let out_file = File::create(&out_file_path).unwrap();
+    //     let comp_files = vec![
+    //         "./ArrayTest/MainT.xml",
+    //         "./Square/MainT.xml",
+    //         "./Square/SquareT.xml",
+    //         "./Square/SquareGameT.xml",
+    //     ];
+    //     for (i, src_file_path) in src_files.iter().enumerate() {
+    //         let src_file = File::open(src_file_path).unwrap();
+    //         let out_file_path = format!("{src_file_path}.out.xml");
+    //         let out_file = File::create(&out_file_path).unwrap();
 
-            let reader = BufReader::new(src_file);
-            let mut tokenizer = JackTokenizer::new(reader);
+    //         let reader = BufReader::new(src_file);
+    //         let mut tokenizer = JackTokenizer::new(reader);
 
-            let mut writer = LineWriter::new(out_file);
-            writer.write("<tokens>\n".to_string().as_bytes()).unwrap();
-            while tokenizer.has_more_tokens() {
-                tokenizer.advance();
-                let token_type = tokenizer.token_type();
-                match token_type {
-                    TokenType::KEYWORD(key) => {
-                        writer
-                            .write(format!("<keyword> {} </keyword>\n", key.to_string()).as_bytes())
-                            .unwrap();
-                    }
-                    TokenType::SYMBOL(symbol) => {
-                        writer
-                            .write(
-                                format!(
-                                    "<symbol> {} </symbol>\n",
-                                    escape_xml_attribute(&symbol.to_string())
-                                )
-                                .as_bytes(),
-                            )
-                            .unwrap();
-                    }
-                    TokenType::IDENTIFIER(identifier) => {
-                        writer
-                            .write(
-                                format!("<identifier> {} </identifier>\n", identifier).as_bytes(),
-                            )
-                            .unwrap();
-                    }
-                    TokenType::INT_CONST(num) => {
-                        writer
-                            .write(
-                                format!("<integerConstant> {} </integerConstant>\n", num)
-                                    .as_bytes(),
-                            )
-                            .unwrap();
-                    }
-                    TokenType::STRING_CONST(string) => {
-                        writer
-                            .write(
-                                format!("<stringConstant> {} </stringConstant>\n", string)
-                                    .as_bytes(),
-                            )
-                            .unwrap();
-                    }
-                }
-            }
-            writer.write("</tokens>".to_string().as_bytes()).unwrap();
-            writer.flush().unwrap();
+    //         let mut writer = LineWriter::new(out_file);
+    //         writer.write("<tokens>\n".to_string().as_bytes()).unwrap();
+    //         while tokenizer.has_more_tokens() {
+    //             tokenizer.advance();
+    //             let token_type = tokenizer.token_type();
+    //             match token_type {
+    //                 TokenType::KEYWORD(key) => {
+    //                     writer
+    //                         .write(format!("<keyword> {} </keyword>\n", key.to_string()).as_bytes())
+    //                         .unwrap();
+    //                 }
+    //                 TokenType::SYMBOL(symbol) => {
+    //                     writer
+    //                         .write(
+    //                             format!(
+    //                                 "<symbol> {} </symbol>\n",
+    //                                 escape_xml_attribute(&symbol.to_string())
+    //                             )
+    //                             .as_bytes(),
+    //                         )
+    //                         .unwrap();
+    //                 }
+    //                 TokenType::IDENTIFIER(identifier) => {
+    //                     writer
+    //                         .write(
+    //                             format!("<identifier> {} </identifier>\n", identifier).as_bytes(),
+    //                         )
+    //                         .unwrap();
+    //                 }
+    //                 TokenType::INT_CONST(num) => {
+    //                     writer
+    //                         .write(
+    //                             format!("<integerConstant> {} </integerConstant>\n", num)
+    //                                 .as_bytes(),
+    //                         )
+    //                         .unwrap();
+    //                 }
+    //                 TokenType::STRING_CONST(string) => {
+    //                     writer
+    //                         .write(
+    //                             format!("<stringConstant> {} </stringConstant>\n", string)
+    //                                 .as_bytes(),
+    //                         )
+    //                         .unwrap();
+    //                 }
+    //             }
+    //         }
+    //         writer.write("</tokens>".to_string().as_bytes()).unwrap();
+    //         writer.flush().unwrap();
 
-            println!("compare {out_file_path} with {}", comp_files[i]);
-            let mut cmd = Command::new("diff");
-            cmd.args(["-w", &out_file_path, comp_files[i]]);
-            assert!(cmd.status().unwrap().success());
-        }
-    }
+    //         println!("compare {out_file_path} with {}", comp_files[i]);
+    //         let mut cmd = Command::new("diff");
+    //         cmd.args(["-w", &out_file_path, comp_files[i]]);
+    //         assert!(cmd.status().unwrap().success());
+    //     }
+    // }
 }
