@@ -3,7 +3,11 @@ use std::io::{BufRead, Read, Write};
 use log::{debug, info};
 
 use crate::{
-    jackTokenizer::JackTokenizer, keyword::KeyWord, symbol::Symbol, tokenType::TokenType,
+    jackTokenizer::JackTokenizer,
+    keyword::KeyWord,
+    symbol::Symbol,
+    symbolTable::{self, SymbolTable},
+    tokenType::TokenType,
     EmitOptions,
 };
 
@@ -200,6 +204,7 @@ pub struct CompilerEngine<R: BufRead, W> {
     tokenizer: JackTokenizer<R>,
     writer: W,
     emits: EmitOptions,
+    symbol_table: SymbolTable,
 }
 
 impl<R, W> CompilerEngine<R, W>
@@ -212,6 +217,7 @@ where
             tokenizer: JackTokenizer::new(reader),
             writer,
             emits,
+            symbol_table: SymbolTable::new(),
         }
     }
 
@@ -271,17 +277,26 @@ where
             match self.tokenizer.token_type() {
                 TokenType::KEYWORD(keyword) => match keyword {
                     KeyWord::STATIC | KeyWord::FIELD => {
+                        // TODO: to avoid keyword.clone().
+                        let keyword = keyword.clone();
                         write_keyword_xml!(self, keyword);
 
-                        self.compile_type();
+                        let type_keyword = self.compile_type();
 
-                        self.compile_var_namelist();
+                        match type_keyword {
+                            Some(type_keyword) => {
+                                self.compile_var_namelist(&keyword, &type_keyword);
 
-                        advance_and_write_symbol!(
-                            self,
-                            Symbol::semicolon,
-                            Symbol::semicolon.to_string()
-                        );
+                                advance_and_write_symbol!(
+                                    self,
+                                    Symbol::semicolon,
+                                    Symbol::semicolon.to_string()
+                                );
+                            }
+                            None => {
+                                panic!("not type is acceptable");
+                            }
+                        }
                     }
                     _ => {
                         panic!("only keyword is acceptable.")
@@ -323,12 +338,13 @@ where
         return result;
     }
 
-    fn compile_type(&mut self) {
+    fn compile_type(&mut self) -> Option<KeyWord> {
         self.tokenizer.advance();
         match self.tokenizer.token_type() {
             TokenType::KEYWORD(keyword) => match keyword {
                 KeyWord::INT | KeyWord::BOOLEAN | KeyWord::CHAR => {
                     write_keyword_xml!(self, keyword);
+                    Some(keyword.clone())
                 }
                 _ => {
                     panic!("only int, boolean or char is acceptable");
@@ -336,6 +352,7 @@ where
             },
             TokenType::IDENTIFIER(ident) => {
                 write_identifier_xml!(self, ident);
+                None
             }
             _ => {
                 panic!("keyword or identifier is acceptable for type.");
@@ -463,18 +480,32 @@ where
         let tagname = "varDec";
         write_xml_start_tag!(self, tagname);
         advance_and_write_keyword!(self, KeyWord::VAR, KeyWord::VAR.to_string());
-        self.compile_type();
-        self.compile_var_namelist();
-        advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
-        write_xml_end_tag!(self, tagname);
+
+        let type_keyword = self.compile_type();
+        match type_keyword {
+            Some(type_keyword) => {
+                self.compile_var_namelist(&KeyWord::VAR, &type_keyword);
+                advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
+                write_xml_end_tag!(self, tagname);
+            }
+            None => {
+                panic!("type is not wrong format");
+            }
+        }
     }
 
-    fn compile_var_namelist(&mut self) {
+    fn compile_var_namelist(&mut self, keyword: &KeyWord, type_keyword: &KeyWord) {
         // name(,name)*
         loop {
             advance_token!(self.tokenizer);
             match self.tokenizer.token_type() {
                 TokenType::IDENTIFIER(id) => {
+                    // define symbol
+                    let result = self
+                        .symbol_table
+                        .define_wrap(id.to_string(), keyword, type_keyword)
+                        .unwrap();
+
                     write_identifier_xml!(self, id);
                 }
                 _ => {
@@ -710,6 +741,7 @@ where
                 panic!("only constructor or function or method are acceptable.")
             }
         }
+        self.symbol_table.start_subroutine();
 
         if self.check_void() {
             advance_token!(self.tokenizer);
@@ -723,7 +755,6 @@ where
 
         self.compile_paramlist();
 
-        // TODO: fail here
         advance_and_write_symbol!(
             self,
             Symbol::right_bracket,
@@ -1067,3 +1098,21 @@ mod tests {
         }
     }
 }
+
+// TODO:
+/*
+call define of SymbolTable when
+
+(emit)
+- add emitoption of simple xml and xml with symbol info
+- impl generate_xml_presence
+(defined)
+- classVarDec
+- subroutineDec
+- parameterList
+- varDec
+
+(used)
+- statement and expression varName!
+
+*/

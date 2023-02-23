@@ -10,10 +10,12 @@ use log::{debug, info};
 use crate::compilerEngine::CompilerEngine;
 
 mod compilerEngine;
+mod error;
 mod jackAnalyzer;
 mod jackTokenizer;
 mod keyword;
 mod symbol;
+mod symbolTable;
 mod tokenType;
 
 #[derive(Parser, Debug)]
