@@ -4,7 +4,7 @@ use thiserror::Error;
 #[error("{message:} ({code:})")]
 pub struct CompilerError {
     message: String,
-    code: i64,
+    pub code: i64,
 }
 
 impl CompilerError {
@@ -18,3 +18,4 @@ impl CompilerError {
 
 pub const NOT_EXIST_TABLE: i64 = -1;
 pub const ALREADY_DEFINED: i64 = -2;
+pub const UNKOWN_ERROR: i64 = -3;

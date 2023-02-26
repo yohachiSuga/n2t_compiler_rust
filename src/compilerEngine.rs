@@ -3,10 +3,11 @@ use std::io::{BufRead, Read, Write};
 use log::{debug, info};
 
 use crate::{
+    error::ALREADY_DEFINED,
     jackTokenizer::JackTokenizer,
     keyword::KeyWord,
     symbol::Symbol,
-    symbolTable::{self, SymbolTable},
+    symbolTable::{self, Kind, SymbolElement, SymbolTable},
     tokenType::TokenType,
     EmitOptions,
 };
@@ -494,17 +495,76 @@ where
         }
     }
 
+    fn generate_symbol_xml_presence(
+        &self,
+        name: &str,
+        category: &str,
+        defined: bool,
+        attr: Option<&str>,
+        idx: Option<usize>,
+    ) -> String {
+        if attr.is_some() && idx.is_some() {
+            format!("<name>{name}</name><category>{category}</category><defined>{}</defined><kind>{}</kind><idx>{}</idx>", if defined {"defined"} else {"used"},attr.unwrap(),idx.unwrap())
+        } else {
+            format!("<name>{name}</name><category>{category}</category>")
+        }
+    }
+
+    fn generate_symbol_xml_presence_from_symbol(
+        &self,
+        name: &str,
+        symbol: Option<&SymbolElement>,
+        category: &str,
+        defined: bool,
+    ) -> String {
+        match symbol {
+            Some(symbol) => self.generate_symbol_xml_presence(
+                name,
+                category,
+                defined,
+                Some(&symbol.kind.to_string()),
+                Some(symbol.index),
+            ),
+            None => self.generate_symbol_xml_presence(name, category, defined, None, None),
+        }
+    }
+
     fn compile_var_namelist(&mut self, keyword: &KeyWord, type_keyword: &KeyWord) {
         // name(,name)*
         loop {
             advance_token!(self.tokenizer);
             match self.tokenizer.token_type() {
                 TokenType::IDENTIFIER(id) => {
+                    // TODO: need to bugfix. It is commonly used by parameterList and varDec. But it cannot be commonly used.
+                    // TODO: how handle arguments??????
                     // define symbol
-                    let result = self
-                        .symbol_table
-                        .define_wrap(id.to_string(), keyword, type_keyword)
-                        .unwrap();
+                    // let result = self
+                    //     .symbol_table
+                    //     .define_wrap(id.to_string(), keyword, type_keyword)
+                    //     .unwrap();
+                    // match self.symbol_table.define(
+                    //     id.to_string(),
+                    //     Kind::from(keyword),
+                    //     type_keyword.to_string(),
+                    // ) {
+                    //     Ok(element) => {
+                    //         // self.generate_symbol_xml_presence_from_symbol(
+                    //         //     id,
+                    //         //     Some(element),
+                    //         //     "temp",
+                    //         //     false,
+                    //         // );
+                    //     }
+                    //     Err(e) => {
+                    //         if e.code == ALREADY_DEFINED {
+                    //             self.generate_symbol_xml_presence_from_symbol(
+                    //                 id, None, "temp", true,
+                    //             );
+                    //         } else {
+                    //             panic!("unexpected compilation error {:?}", e);
+                    //         }
+                    //     }
+                    // }
 
                     write_identifier_xml!(self, id);
                 }

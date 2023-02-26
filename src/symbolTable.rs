@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
 use log::{debug, info};
+use strum_macros::Display;
 
 use crate::{
-    error::{CompilerError, ALREADY_DEFINED, NOT_EXIST_TABLE},
+    error::{CompilerError, ALREADY_DEFINED, NOT_EXIST_TABLE, UNKOWN_ERROR},
     keyword::KeyWord,
 };
 
 const CLASS_TABLE_KEY: &str = "class";
 const SUBROUTINE_TABLE_KEY: &str = "subroutine";
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Display)]
 pub enum Kind {
     Static,
     Field,
@@ -31,11 +32,11 @@ impl From<&KeyWord> for Kind {
     }
 }
 
-struct SymbolElement {
-    index: usize,
-    kind: Kind,
+pub struct SymbolElement {
+    pub index: usize,
+    pub kind: Kind,
     // TODO: better name to use?
-    _type: String,
+    pub _type: String,
 }
 
 // key is variable name
@@ -67,22 +68,12 @@ impl SymbolTable {
         );
     }
 
-    pub fn define_wrap(
+    pub fn define(
         &mut self,
         name: String,
-        kind: &KeyWord,
-        type_keyword: &KeyWord,
-    ) -> Result<(), CompilerError> {
-        let _type = match type_keyword {
-            KeyWord::INT | KeyWord::BOOLEAN | KeyWord::CHAR => type_keyword.to_string(),
-            _ => {
-                panic!("only int, boolean or char is acceptable.");
-            }
-        };
-        self.define(name, Kind::from(kind), _type)
-    }
-
-    pub fn define(&mut self, name: String, kind: Kind, _type: String) -> Result<(), CompilerError> {
+        kind: Kind,
+        _type: String,
+    ) -> Result<&SymbolElement, CompilerError> {
         let index = self.kind_count(&kind);
         match kind {
             Kind::Static | Kind::Field => match self.table.get_mut(CLASS_TABLE_KEY) {
@@ -93,8 +84,9 @@ impl SymbolTable {
                     }
                     None => {
                         debug!("find new class variable:{}", name);
-                        class_table.insert(name, SymbolElement { index, kind, _type });
-                        return Ok(());
+                        let _name = name.clone();
+                        class_table.insert(_name, SymbolElement { index, kind, _type });
+                        return Ok(class_table.get(&name).unwrap());
                     }
                 },
                 None => {
@@ -109,8 +101,9 @@ impl SymbolTable {
                     }
                     None => {
                         debug!("find new subroutine variable:{}", name);
-                        subroutine_table.insert(name, SymbolElement { index, kind, _type });
-                        return Ok(());
+                        let _name = name.clone();
+                        subroutine_table.insert(_name, SymbolElement { index, kind, _type });
+                        return Ok(subroutine_table.get(&name).unwrap());
                     }
                 },
                 None => {
