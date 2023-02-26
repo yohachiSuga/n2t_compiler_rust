@@ -4,7 +4,6 @@ use strum::IntoEnumIterator;
     Debug,
     PartialEq,
     Clone,
-    Copy,
     strum_macros::EnumString,
     strum_macros::Display,
     strum_macros::IntoStaticStr,
@@ -53,4 +52,6 @@ pub enum KeyWord {
     NULL,
     #[strum(serialize = "this")]
     THIS,
+    // SPECIAL KEYWORD to store identifier and its name
+    IDENTIFIER(String),
 }

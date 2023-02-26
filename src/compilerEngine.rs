@@ -352,8 +352,9 @@ where
                 }
             },
             TokenType::IDENTIFIER(ident) => {
+                debug!("identifier: {}", ident);
                 write_identifier_xml!(self, ident);
-                None
+                Some(KeyWord::IDENTIFIER(ident.clone()))
             }
             _ => {
                 panic!("keyword or identifier is acceptable for type.");
@@ -490,7 +491,7 @@ where
                 write_xml_end_tag!(self, tagname);
             }
             None => {
-                panic!("type is not wrong format");
+                panic!("compile_var_dec failed. unknown keyword is defined.");
             }
         }
     }
