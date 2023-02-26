@@ -201,6 +201,34 @@ fn escape_xml_attribute(input: &str) -> &str {
     return input;
 }
 
+fn generate_symbol_xml_presence(
+    name: &str,
+    category: &str,
+    defined: bool,
+    attr: Option<&str>,
+    idx: Option<usize>,
+) -> String {
+    if attr.is_some() && idx.is_some() {
+        format!("<name>{name}</name><category>{category}</category><defined>{}</defined><kind>{}</kind><idx>{}</idx>", if defined {"defined"} else {"used"},attr.unwrap(),idx.unwrap())
+    } else {
+        format!("<name>{name}</name><category>{category}</category>")
+    }
+}
+
+fn generate_symbol_xml_presence_from_symbol(
+    name: &str,
+    symbol: &SymbolElement,
+    defined: bool,
+) -> String {
+    generate_symbol_xml_presence(
+        name,
+        &symbol.kind.to_string(),
+        defined,
+        Some(&symbol.kind.to_string()),
+        Some(symbol.index),
+    )
+}
+
 pub struct CompilerEngine<R: BufRead, W> {
     tokenizer: JackTokenizer<R>,
     writer: W,
@@ -496,78 +524,40 @@ where
         }
     }
 
-    fn generate_symbol_xml_presence(
-        &self,
-        name: &str,
-        category: &str,
-        defined: bool,
-        attr: Option<&str>,
-        idx: Option<usize>,
-    ) -> String {
-        if attr.is_some() && idx.is_some() {
-            format!("<name>{name}</name><category>{category}</category><defined>{}</defined><kind>{}</kind><idx>{}</idx>", if defined {"defined"} else {"used"},attr.unwrap(),idx.unwrap())
-        } else {
-            format!("<name>{name}</name><category>{category}</category>")
-        }
-    }
-
-    fn generate_symbol_xml_presence_from_symbol(
-        &self,
-        name: &str,
-        symbol: Option<&SymbolElement>,
-        category: &str,
-        defined: bool,
-    ) -> String {
-        match symbol {
-            Some(symbol) => self.generate_symbol_xml_presence(
-                name,
-                category,
-                defined,
-                Some(&symbol.kind.to_string()),
-                Some(symbol.index),
-            ),
-            None => self.generate_symbol_xml_presence(name, category, defined, None, None),
-        }
-    }
-
     fn compile_var_namelist(&mut self, keyword: &KeyWord, type_keyword: &KeyWord) {
         // name(,name)*
         loop {
             advance_token!(self.tokenizer);
             match self.tokenizer.token_type() {
                 TokenType::IDENTIFIER(id) => {
-                    // TODO: need to bugfix. It is commonly used by parameterList and varDec. But it cannot be commonly used.
-                    // TODO: how handle arguments??????
-                    // define symbol
-                    // let result = self
-                    //     .symbol_table
-                    //     .define_wrap(id.to_string(), keyword, type_keyword)
-                    //     .unwrap();
-                    // match self.symbol_table.define(
-                    //     id.to_string(),
-                    //     Kind::from(keyword),
-                    //     type_keyword.to_string(),
-                    // ) {
-                    //     Ok(element) => {
-                    //         // self.generate_symbol_xml_presence_from_symbol(
-                    //         //     id,
-                    //         //     Some(element),
-                    //         //     "temp",
-                    //         //     false,
-                    //         // );
-                    //     }
-                    //     Err(e) => {
-                    //         if e.code == ALREADY_DEFINED {
-                    //             self.generate_symbol_xml_presence_from_symbol(
-                    //                 id, None, "temp", true,
-                    //             );
-                    //         } else {
-                    //             panic!("unexpected compilation error {:?}", e);
-                    //         }
-                    //     }
-                    // }
-
-                    write_identifier_xml!(self, id);
+                    if self.emits.is_emit_ex_xml() {
+                        let result = self.symbol_table.define(
+                            id.to_string(),
+                            Kind::from(keyword),
+                            type_keyword.to_string(),
+                        );
+                        let content = match result {
+                            Ok(element) => {
+                                generate_symbol_xml_presence_from_symbol(id, element, true)
+                            }
+                            Err(e) => {
+                                if e.code == ALREADY_DEFINED {
+                                    let element = self.symbol_table.find(&id);
+                                    generate_symbol_xml_presence_from_symbol(
+                                        id,
+                                        element
+                                            .expect("error code ALREADY_DEFINED, but not exist?"),
+                                        false,
+                                    )
+                                } else {
+                                    panic!("unexpected compilation error {:?}", e);
+                                }
+                            }
+                        };
+                        write_identifier_xml!(self, content);
+                    } else {
+                        write_identifier_xml!(self, id);
+                    }
                 }
                 _ => {
                     panic!("not acceptable token type for subroutineName");
@@ -1114,7 +1104,7 @@ mod tests {
 
     #[test]
     fn test_compiler_engine() {
-        env_logger::init();
+        env_logger::try_init();
         let inputs = vec![
             "./ExpressionLessSquare/Main.jack",
             "./ExpressionLessSquare/Square.jack",
@@ -1156,6 +1146,40 @@ mod tests {
             let mut cmd = Command::new("diff");
             cmd.args(["-w", &outputs[i], comps[i]]);
             assert!(cmd.status().unwrap().success());
+        }
+    }
+
+    #[test]
+    fn test_compiler_engine_ex_xml() {
+        env_logger::try_init();
+        let inputs = vec![
+            "./ExpressionLessSquare/Main.jack",
+            "./ExpressionLessSquare/Square.jack",
+            "./ExpressionLessSquare/SquareGame.jack",
+            "./ArrayTest/Main.jack",
+            "./Square/Main.jack",
+            "./Square/Square.jack",
+            "./Square/SquareGame.jack",
+        ];
+
+        let outputs = vec![
+            "./ExpressionLessSquare/Main.out.ex.xml",
+            "./ExpressionLessSquare/Square.out.ex.xml",
+            "./ExpressionLessSquare/SquareGame.out.ex.xml",
+            "./ArrayTest/Main.out.ex.xml",
+            "./Square/Main.out.ex.xml",
+            "./Square/Square.out.ex.xml",
+            "./Square/SquareGame.out.ex.xml",
+        ];
+
+        for (i, input) in inputs.iter().enumerate() {
+            let reader = BufReader::new(File::open(input).unwrap());
+            let writer = BufWriter::new(File::create(outputs.get(i).unwrap()).unwrap());
+            {
+                let emits = EmitOptions::new(&vec!["xml".to_string(), "ex-xml".to_string()]);
+                let mut engine = CompilerEngine::new(reader, writer, emits);
+                engine.compile_class();
+            }
         }
     }
 }

@@ -31,32 +31,50 @@ pub struct Args {
 #[derive(Debug)]
 pub struct EmitOptions {
     emit_xml: bool,
+    emit_extend_xml: bool,
     emit_vm: bool,
 }
 
 impl EmitOptions {
     const XML: &str = "xml";
+    const EX_XML: &str = "ex-xml";
     const VM: &str = "vm";
 
     pub fn new(emits: &Vec<String>) -> EmitOptions {
         let mut emit_xml = false;
         let mut emit_vm = false;
+        let mut emit_ex_xml = false;
 
         for emit in emits {
             if EmitOptions::XML.eq(&emit.to_lowercase()) {
+                info!("xml is enabled");
                 emit_xml = true;
             }
 
+            if EmitOptions::EX_XML.eq(&emit.to_lowercase()) {
+                info!("ex-xml is enabled");
+                emit_ex_xml = true;
+            }
+
             if EmitOptions::VM.eq(&emit.to_lowercase()) {
+                info!("vm is enabled");
                 emit_vm = true;
             }
         }
 
-        EmitOptions { emit_xml, emit_vm }
+        EmitOptions {
+            emit_xml,
+            emit_extend_xml: emit_ex_xml,
+            emit_vm,
+        }
     }
 
     pub fn is_emit_xml(&self) -> bool {
         self.emit_xml
+    }
+
+    pub fn is_emit_ex_xml(&self) -> bool {
+        self.emit_extend_xml
     }
 
     pub fn is_emit_vm(&self) -> bool {
