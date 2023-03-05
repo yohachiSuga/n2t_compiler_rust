@@ -229,6 +229,14 @@ fn generate_symbol_xml_presence_from_symbol(
     )
 }
 
+struct VarNameContext<'a> {
+    is_expected_be_define: bool,
+    // if type_keyword is None, is_expected_to_be_define shall be false. (collect from SymbolTable)
+    type_keyword: Option<&'a KeyWord>,
+    // if kind is None, is_expected_to_be_define shall be false. (collect from SymbolTable)
+    kind: Option<Kind>,
+}
+
 pub struct CompilerEngine<R: BufRead, W> {
     tokenizer: JackTokenizer<R>,
     writer: W,
@@ -464,7 +472,8 @@ where
         match &self.tokenizer.token_type() {
             TokenType::KEYWORD(keyword) => match keyword {
                 KeyWord::LET => {
-                    self.compile_let_statement(&keyword.to_string());
+                    // TODO: avoid clone
+                    self.compile_let_statement(&keyword.clone());
                 }
                 KeyWord::DO => {
                     self.compile_do_statement(&keyword.to_string());
@@ -583,11 +592,46 @@ where
         }
     }
 
-    fn compile_var_name(&mut self) {
+    fn compile_var_name(&mut self, ctx: VarNameContext) {
         advance_token!(self.tokenizer);
         match self.tokenizer.token_type() {
             TokenType::IDENTIFIER(id) => {
-                write_identifier_xml!(self, id);
+                if self.emits.is_emit_ex_xml() {
+                    let content = match self.symbol_table.find(&id) {
+                        Some(result) => {
+                            if ctx.is_expected_be_define {
+                                panic!("id : {id} is already defined. something wrong.");
+                            }
+
+                            generate_symbol_xml_presence_from_symbol(id, result, false)
+                        }
+                        None => {
+                            if !ctx.is_expected_be_define {
+                                panic!("id : {id} is expected not to be defined. something wrong.");
+                            }
+
+                            let result = self.symbol_table.define(
+                                id.to_string(),
+                                ctx.kind.expect("kind shall be defined."),
+                                ctx.type_keyword
+                                    .expect("type keyword shall be defined")
+                                    .to_string(),
+                            );
+                            match result {
+                                Ok(element) => {
+                                    generate_symbol_xml_presence_from_symbol(id, element, true)
+                                }
+                                Err(err) => {
+                                    panic!("symbol is not found, but define error. {:?}", err);
+                                }
+                            }
+                        }
+                    };
+
+                    write_identifier_xml!(self, content);
+                } else {
+                    write_identifier_xml!(self, id);
+                }
             }
             _ => {
                 panic!("not acceptable token type for subroutineName");
@@ -595,14 +639,18 @@ where
         }
     }
 
-    fn compile_let_statement(&mut self, keyword: &str) {
+    fn compile_let_statement(&mut self, keyword: &KeyWord) {
         // let varName ( [exp])? = exp;
         info!("parse let");
         let tagname = "letStatement";
         write_xml_start_tag!(self, tagname);
         write_keyword_xml!(self, keyword.to_string());
 
-        self.compile_var_name();
+        self.compile_var_name(VarNameContext {
+            is_expected_be_define: false,
+            type_keyword: None,
+            kind: None,
+        });
 
         // check [ or =
         advance_token!(self.tokenizer);
@@ -716,8 +764,19 @@ where
         let tagname = "parameterList";
         write_xml_start_tag!(self, tagname);
         while self.check_paramlist() {
-            self.compile_type();
-            self.compile_var_name();
+            let type_keyword = self.compile_type();
+            match type_keyword {
+                Some(type_keyword) => {
+                    self.compile_var_name(VarNameContext {
+                        is_expected_be_define: true,
+                        type_keyword: Some(&type_keyword),
+                        kind: Some(Kind::Argument),
+                    });
+                }
+                None => {
+                    panic!("cannot compile perameter")
+                }
+            }
 
             advance_token!(self.tokenizer);
             match self.tokenizer.token_type() {
@@ -1160,6 +1219,7 @@ mod tests {
             "./Square/Main.jack",
             "./Square/Square.jack",
             "./Square/SquareGame.jack",
+            "./bankaccount.jack",
         ];
 
         let outputs = vec![
@@ -1170,6 +1230,7 @@ mod tests {
             "./Square/Main.out.ex.xml",
             "./Square/Square.out.ex.xml",
             "./Square/SquareGame.out.ex.xml",
+            "./bankaccount.out.ex.xml",
         ];
 
         for (i, input) in inputs.iter().enumerate() {
@@ -1189,15 +1250,17 @@ mod tests {
 call define of SymbolTable when
 
 (emit)
-- add emitoption of simple xml and xml with symbol info
-- impl generate_xml_presence
+- (OK)add emitoption of simple xml and xml with symbol info
+- (OK)impl generate_xml_presence
 (defined)
-- classVarDec
-- subroutineDec
-- parameterList
+- (OK)classVarDec
+- (OK)subroutineDec
+- (OK)parameterList
+- this
 - varDec
 
 (used)
 - statement and expression varName!
+- (OK)let
 
 */
