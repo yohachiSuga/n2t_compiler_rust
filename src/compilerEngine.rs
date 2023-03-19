@@ -470,7 +470,7 @@ where
         match &keyword {
             KeyWord::IDENTIFIER(ident) => {
                 self.compile_class_name(ClassNameContext {
-                    name: &keyword.to_string(),
+                    name: &ident.to_string(),
                     is_advance: false,
                 });
             }
