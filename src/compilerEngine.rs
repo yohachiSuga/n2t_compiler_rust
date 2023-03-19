@@ -1,4 +1,7 @@
-use std::io::{BufRead, Read, Write};
+use std::{
+    io::{BufRead, Read, Write},
+    process::id,
+};
 
 use log::{debug, info};
 
@@ -237,11 +240,17 @@ struct VarNameContext<'a> {
     kind: Option<Kind>,
 }
 
+struct ClassNameContext<'a> {
+    name: &'a str,    //class name
+    is_advance: bool, // if is_advance is set to true, advance and use next token instead of name
+}
+
 pub struct CompilerEngine<R: BufRead, W> {
     tokenizer: JackTokenizer<R>,
     writer: W,
     emits: EmitOptions,
     symbol_table: SymbolTable,
+    current_class_name: Option<String>,
 }
 
 impl<R, W> CompilerEngine<R, W>
@@ -255,11 +264,60 @@ where
             writer,
             emits,
             symbol_table: SymbolTable::new(),
+            current_class_name: None,
         }
     }
 
-    fn compile_class_name(&mut self) {
-        advance_and_write_identifier!(self);
+    fn compile_class_name(&mut self, ctx: ClassNameContext) {
+        if ctx.is_advance {
+            // advance
+            self.tokenizer.advance();
+            match self.tokenizer.token_type() {
+                TokenType::KEYWORD(keyword) => {
+                    panic!("only identifier is acceptable")
+                }
+                TokenType::IDENTIFIER(ident) => {
+                    if self.emits.is_emit_ex_xml() {
+                        let content = generate_symbol_xml_presence(
+                            ident,
+                            {
+                                if self.current_class_name.as_ref().unwrap().eq(ident) {
+                                    "CLASS_MYSELF"
+                                } else {
+                                    "CLASS_DEFINED_EXTERNAL"
+                                }
+                            },
+                            false,
+                            None,
+                            None,
+                        );
+                        write_identifier_xml!(self, content);
+                    } else {
+                        write_identifier_xml!(self, ident);
+                    }
+                }
+                _ => {
+                    panic!("keyword or identifier is acceptable for type.");
+                }
+            }
+        } else {
+            if self.emits.is_emit_ex_xml() {
+                let content = generate_symbol_xml_presence(
+                    ctx.name,
+                    if self.current_class_name.as_ref().unwrap().eq(ctx.name) {
+                        "CLASS_MYSELF"
+                    } else {
+                        "CLASS_DEFINED_EXTERNAL"
+                    },
+                    false,
+                    None,
+                    None,
+                );
+                write_identifier_xml!(self, content);
+            } else {
+                write_identifier_xml!(self, ctx.name);
+            }
+        }
     }
 
     pub fn compile_class(&mut self) {
@@ -268,7 +326,23 @@ where
 
         advance_and_write_keyword!(self, KeyWord::CLASS, KeyWord::CLASS.to_string());
 
-        self.compile_class_name();
+        self.tokenizer.advance();
+        match self.tokenizer.token_type() {
+            TokenType::KEYWORD(keyword) => {
+                panic!("only identifier is acceptable")
+            }
+            TokenType::IDENTIFIER(ident) => {
+                self.current_class_name = Some(ident.clone());
+            }
+            _ => {
+                panic!("keyword or identifier is acceptable for type.");
+            }
+        }
+
+        self.compile_class_name(ClassNameContext {
+            name: &self.current_class_name.as_ref().unwrap().clone(),
+            is_advance: false,
+        });
 
         advance_and_write_symbol!(
             self,
@@ -377,25 +451,35 @@ where
 
     fn compile_type(&mut self) -> Option<KeyWord> {
         self.tokenizer.advance();
-        match self.tokenizer.token_type() {
+        let keyword = match self.tokenizer.token_type() {
             TokenType::KEYWORD(keyword) => match keyword {
                 KeyWord::INT | KeyWord::BOOLEAN | KeyWord::CHAR => {
                     write_keyword_xml!(self, keyword);
-                    Some(keyword.clone())
+                    keyword.clone()
                 }
                 _ => {
                     panic!("only int, boolean or char is acceptable");
                 }
             },
-            TokenType::IDENTIFIER(ident) => {
-                debug!("identifier: {}", ident);
-                write_identifier_xml!(self, ident);
-                Some(KeyWord::IDENTIFIER(ident.clone()))
-            }
+            TokenType::IDENTIFIER(ident) => KeyWord::IDENTIFIER(ident.clone()),
             _ => {
                 panic!("keyword or identifier is acceptable for type.");
             }
+        };
+
+        match &keyword {
+            KeyWord::IDENTIFIER(ident) => {
+                self.compile_class_name(ClassNameContext {
+                    name: &keyword.to_string(),
+                    is_advance: false,
+                });
+            }
+            _ => {
+                // do nothing
+            }
         }
+
+        Some(KeyWord::IDENTIFIER(keyword.to_string()))
     }
 
     fn compile_statements(&mut self) {
@@ -1256,8 +1340,10 @@ call define of SymbolTable when
 - (OK)classVarDec
 - (OK)subroutineDec
 - (OK)parameterList
+- (OK)type (compile_type)
 - this
-- varDec
+- (OK)compile class(external class is category class and is_defined:External???)
+- (OK)varDec
 
 (used)
 - statement and expression varName!
