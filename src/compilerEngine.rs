@@ -1157,24 +1157,37 @@ where
                         Symbol::left_bracket | Symbol::period => {
                             write_identifier_xml!(self, identifier);
                             self.tokenizer.back();
-                            // TODO: support subroutine call
+                            // TODO: support subroutine name for xml
                             self.compile_subroutine_call(true);
                         }
                         _ => {
-                            // do nothing
-                            write_identifier_xml!(self, identifier);
+                            // TODO: to be commonized at the followings
+                            let var_name_ctx = VarNameContext {
+                                is_expected_be_define: false,
+                                type_keyword: None,
+                                kind: None,
+                                is_advance: false,
+                                token: Some(&identifier),
+                            };
+                            self.compile_var_name(var_name_ctx);
                             self.tokenizer.back();
                         }
                     },
                     _ => {
-                        // do nothing
-                        write_identifier_xml!(self, identifier);
+                        let var_name_ctx = VarNameContext {
+                            is_expected_be_define: false,
+                            type_keyword: None,
+                            kind: None,
+                            is_advance: false,
+                            token: Some(&identifier),
+                        };
+                        self.compile_var_name(var_name_ctx);
+
                         self.tokenizer.back();
                     }
                 }
 
                 if is_write_exp {
-                    let symbol = self.tokenizer.token_type();
                     let var_name_ctx = VarNameContext {
                         is_expected_be_define: false,
                         type_keyword: None,
@@ -1377,9 +1390,11 @@ call define of SymbolTable when
 (used)
 - statement and expression varName!
 - (OK)let
+- (OK) varname
 - if
 - while
 - do
 - return
+- ()subroutine name
 
 */
