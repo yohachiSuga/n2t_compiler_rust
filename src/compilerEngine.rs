@@ -1,4 +1,5 @@
 use std::{
+    env::var,
     io::{BufRead, Read, Write},
     process::id,
 };
@@ -238,6 +239,8 @@ struct VarNameContext<'a> {
     type_keyword: Option<&'a KeyWord>,
     // if kind is None, is_expected_to_be_define shall be false. (collect from SymbolTable)
     kind: Option<Kind>,
+    is_advance: bool,
+    token: Option<&'a str>,
 }
 
 struct ClassNameContext<'a> {
@@ -677,49 +680,51 @@ where
     }
 
     fn compile_var_name(&mut self, ctx: VarNameContext) {
-        advance_token!(self.tokenizer);
-        match self.tokenizer.token_type() {
-            TokenType::IDENTIFIER(id) => {
-                if self.emits.is_emit_ex_xml() {
-                    let content = match self.symbol_table.find(&id) {
-                        Some(result) => {
-                            if ctx.is_expected_be_define {
-                                panic!("id : {id} is already defined. something wrong.");
-                            }
-
-                            generate_symbol_xml_presence_from_symbol(id, result, false)
-                        }
-                        None => {
-                            if !ctx.is_expected_be_define {
-                                panic!("id : {id} is expected not to be defined. something wrong.");
-                            }
-
-                            let result = self.symbol_table.define(
-                                id.to_string(),
-                                ctx.kind.expect("kind shall be defined."),
-                                ctx.type_keyword
-                                    .expect("type keyword shall be defined")
-                                    .to_string(),
-                            );
-                            match result {
-                                Ok(element) => {
-                                    generate_symbol_xml_presence_from_symbol(id, element, true)
-                                }
-                                Err(err) => {
-                                    panic!("symbol is not found, but define error. {:?}", err);
-                                }
-                            }
-                        }
-                    };
-
-                    write_identifier_xml!(self, content);
-                } else {
-                    write_identifier_xml!(self, id);
+        let id = if ctx.is_advance {
+            advance_token!(self.tokenizer);
+            match self.tokenizer.token_type() {
+                TokenType::IDENTIFIER(id) => id.to_string(),
+                _ => {
+                    panic!("not acceptable token type for subroutineName");
                 }
             }
-            _ => {
-                panic!("not acceptable token type for subroutineName");
-            }
+        } else {
+            ctx.token.as_ref().unwrap().to_string()
+        };
+
+        if self.emits.is_emit_ex_xml() {
+            let content = match self.symbol_table.find(&id) {
+                Some(result) => {
+                    if ctx.is_expected_be_define {
+                        panic!("id : {id} is already defined. something wrong.");
+                    }
+
+                    generate_symbol_xml_presence_from_symbol(&id, result, false)
+                }
+                None => {
+                    if !ctx.is_expected_be_define {
+                        panic!("id : {id} is expected not to be defined. something wrong.");
+                    }
+
+                    let result = self.symbol_table.define(
+                        id.to_string(),
+                        ctx.kind.expect("kind shall be defined."),
+                        ctx.type_keyword
+                            .expect("type keyword shall be defined")
+                            .to_string(),
+                    );
+                    match result {
+                        Ok(element) => generate_symbol_xml_presence_from_symbol(&id, element, true),
+                        Err(err) => {
+                            panic!("symbol is not found, but define error. {:?}", err);
+                        }
+                    }
+                }
+            };
+
+            write_identifier_xml!(self, content);
+        } else {
+            write_identifier_xml!(self, id);
         }
     }
 
@@ -734,6 +739,8 @@ where
             is_expected_be_define: false,
             type_keyword: None,
             kind: None,
+            is_advance: true,
+            token: None,
         });
 
         // check [ or =
@@ -855,6 +862,8 @@ where
                         is_expected_be_define: true,
                         type_keyword: Some(&type_keyword),
                         kind: Some(Kind::Argument),
+                        is_advance: true,
+                        token: None,
                     });
                 }
                 None => {
@@ -1135,35 +1144,55 @@ where
         match self.tokenizer.token_type() {
             TokenType::IDENTIFIER(identifier) => {
                 // varName | varName[] | SubroutineCall (func() or  class.func() )
-                write_identifier_xml!(self, identifier);
+                // write_identifier_xml!(self, identifier);
+                let identifier = identifier.to_string();
 
+                let mut is_write_exp = false;
                 advance_token!(self.tokenizer);
                 match self.tokenizer.token_type() {
                     TokenType::SYMBOL(symbol) => match symbol {
                         Symbol::left_square_bracket => {
-                            write_symbol_xml!(self, symbol);
-
-                            self.compile_exp();
-
-                            advance_and_write_symbol!(
-                                self,
-                                Symbol::right_square_bracket,
-                                Symbol::right_square_bracket.to_string()
-                            );
+                            is_write_exp = true;
                         }
                         Symbol::left_bracket | Symbol::period => {
+                            write_identifier_xml!(self, identifier);
                             self.tokenizer.back();
+                            // TODO: support subroutine call
                             self.compile_subroutine_call(true);
                         }
                         _ => {
                             // do nothing
+                            write_identifier_xml!(self, identifier);
                             self.tokenizer.back();
                         }
                     },
                     _ => {
                         // do nothing
+                        write_identifier_xml!(self, identifier);
                         self.tokenizer.back();
                     }
+                }
+
+                if is_write_exp {
+                    let symbol = self.tokenizer.token_type();
+                    let var_name_ctx = VarNameContext {
+                        is_expected_be_define: false,
+                        type_keyword: None,
+                        kind: None,
+                        is_advance: false,
+                        token: Some(&identifier),
+                    };
+                    self.compile_var_name(var_name_ctx);
+
+                    write_symbol_xml!(self, Symbol::left_square_bracket);
+
+                    self.compile_exp();
+
+                    advance_and_write_symbol!(
+                        self,
+                        Symbol::right_square_bracket,
+                        Symbol::right_square_bracket.to_string()
+                    );
                 }
             }
             TokenType::KEYWORD(keyword) => {
@@ -1348,5 +1377,9 @@ call define of SymbolTable when
 (used)
 - statement and expression varName!
 - (OK)let
+- if
+- while
+- do
+- return
 
 */
