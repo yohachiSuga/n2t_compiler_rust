@@ -840,7 +840,7 @@ where
         write_xml_start_tag!(self, tagname);
         write_keyword_xml!(self, keyword.to_string());
 
-        self.compile_subroutine_call(false);
+        self.compile_subroutine_call(None);
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
         write_xml_end_tag!(self, tagname);
@@ -891,18 +891,28 @@ where
         write_xml_end_tag!(self, tagname);
     }
 
-    fn compile_subroutine_name(&mut self) {
-        advance_token!(self.tokenizer);
-        match self.tokenizer.token_type() {
-            TokenType::IDENTIFIER(id) => {
-                write_identifier_xml!(self, id);
+    fn compile_subroutine_name(&mut self, pre_read_token: Option<&str>) {
+        let token = match pre_read_token {
+            Some(token) => token,
+            None => {
+                advance_token!(self.tokenizer);
+                match self.tokenizer.token_type() {
+                    TokenType::IDENTIFIER(id) => id,
+                    _ => {
+                        panic!(
+                            "not acceptable token type for subroutineName {:?}",
+                            self.tokenizer.token_type()
+                        );
+                    }
+                }
             }
-            _ => {
-                panic!(
-                    "not acceptable token type for subroutineName {:?}",
-                    self.tokenizer.token_type()
-                );
-            }
+        };
+
+        if self.emits.is_emit_ex_xml() {
+            let content = generate_symbol_xml_presence(token, "SUBROUTINE", false, None, None);
+            write_identifier_xml!(self, content);
+        } else {
+            write_identifier_xml!(self, token);
         }
     }
 
@@ -952,7 +962,7 @@ where
         } else {
             self.compile_type();
         }
-        self.compile_subroutine_name();
+        self.compile_subroutine_name(None);
 
         advance_and_write_symbol!(self, Symbol::left_bracket, Symbol::left_bracket.to_string());
 
@@ -968,34 +978,34 @@ where
         write_xml_end_tag!(self, tagname);
     }
 
-    fn compile_subroutine_call(&mut self, pre_read_name: bool) {
+    fn compile_subroutine_call(&mut self, pre_read_identifier: Option<&str>) {
         info!("parse subroutineCall");
         // subroutine name or classname (currently same)
-        if !pre_read_name {
-            self.compile_subroutine_name();
-        }
+        let id = match pre_read_identifier {
+            Some(id) => id.to_string(),
+            None => {
+                advance_token!(self.tokenizer);
+                match self.tokenizer.token_type() {
+                    TokenType::IDENTIFIER(id) => id.to_string(),
+                    _ => {
+                        panic!("not supported token type is found. in subroutine call")
+                    }
+                }
+            }
+        };
 
         advance_token!(self.tokenizer);
         // name() or class.name();
-        let left_bracket = match self.tokenizer.token_type() {
+        let mut is_compile_subroutine_name = false;
+        let mut is_compile_class_name = false;
+        match self.tokenizer.token_type() {
             TokenType::SYMBOL(symbol) => match symbol {
                 Symbol::left_bracket => {
                     // name();
-                    symbol
+                    is_compile_subroutine_name = true;
                 }
                 Symbol::period => {
-                    // class.name();
-                    write_symbol_xml!(self, symbol);
-
-                    self.compile_subroutine_name();
-
-                    advance_token!(self.tokenizer);
-                    symbol_check!(
-                        self.tokenizer,
-                        Symbol::left_bracket,
-                        Symbol::left_bracket.to_string()
-                    );
-                    &Symbol::left_bracket
+                    is_compile_class_name = true;
                 }
                 _ => {
                     panic!("not acceptable symbol {symbol} for token next to subroutineName")
@@ -1006,7 +1016,25 @@ where
             }
         };
 
-        write_symbol_xml!(self, left_bracket);
+        // write func or class.func
+        {
+            if is_compile_subroutine_name {
+                self.compile_subroutine_name(Some(&id));
+                // current token shall be already left_bracket.
+            }
+
+            if is_compile_class_name {
+                self.compile_class_name(ClassNameContext {
+                    name: &id,
+                    is_advance: false,
+                });
+                write_symbol_xml!(self, Symbol::period);
+                self.compile_subroutine_name(None);
+                // current token is not left_bracket, so need to advance.
+                advance_token!(self.tokenizer);
+            }
+        }
+        write_symbol_xml!(self, Symbol::left_bracket);
         // exp list
         self.compile_explist();
 
@@ -1155,10 +1183,8 @@ where
                             is_write_exp = true;
                         }
                         Symbol::left_bracket | Symbol::period => {
-                            write_identifier_xml!(self, identifier);
                             self.tokenizer.back();
-                            // TODO: support subroutine name for xml
-                            self.compile_subroutine_call(true);
+                            self.compile_subroutine_call(Some(&identifier));
                         }
                         _ => {
                             // TODO: to be commonized at the followings
@@ -1370,31 +1396,3 @@ mod tests {
         }
     }
 }
-
-// TODO:
-/*
-call define of SymbolTable when
-
-(emit)
-- (OK)add emitoption of simple xml and xml with symbol info
-- (OK)impl generate_xml_presence
-(defined)
-- (OK)classVarDec
-- (OK)subroutineDec
-- (OK)parameterList
-- (OK)type (compile_type)
-- this
-- (OK)compile class(external class is category class and is_defined:External???)
-- (OK)varDec
-
-(used)
-- statement and expression varName!
-- (OK)let
-- (OK) varname
-- if
-- while
-- do
-- return
-- ()subroutine name
-
-*/
