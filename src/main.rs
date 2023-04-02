@@ -17,6 +17,7 @@ mod keyword;
 mod symbol;
 mod symbolTable;
 mod tokenType;
+mod vmWriter;
 
 #[derive(Parser, Debug)]
 pub struct Args {
