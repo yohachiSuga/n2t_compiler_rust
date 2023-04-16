@@ -257,6 +257,7 @@ pub struct CompilerEngine<R: BufRead, W> {
     emits: EmitOptions,
     symbol_table: SymbolTable,
     current_class_name: Option<String>,
+    current_subroutine_name: Option<String>,
 }
 
 impl<R, W> CompilerEngine<R, W>
@@ -276,6 +277,7 @@ where
             vm_writer: vm_writer,
             symbol_table: SymbolTable::new(),
             current_class_name: None,
+            current_subroutine_name: None,
             emits,
         }
     }
@@ -917,6 +919,7 @@ where
             }
         };
 
+        self.current_subroutine_name = Some(token.to_string());
         if self.emits.is_emit_ex_xml() {
             let content = generate_symbol_xml_presence(token, "SUBROUTINE", false, None, None);
             write_identifier_xml!(self, content);
@@ -1067,6 +1070,18 @@ where
 
         // varDec*
         self.compileVarDecList();
+
+        if self.emits.emit_vm {
+            self.vm_writer.write_func(
+                &format!(
+                    "{}.{}",
+                    self.current_class_name.as_ref().unwrap(),
+                    self.current_subroutine_name.as_ref().unwrap(),
+                ),
+                self.symbol_table.kind_count(&Kind::Var) as u32,
+            );
+        }
+
         // statements
         self.compile_statements();
 

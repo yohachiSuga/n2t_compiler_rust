@@ -113,7 +113,7 @@ impl SymbolTable {
         }
     }
 
-    fn kind_count(&self, kind: &Kind) -> usize {
+    pub fn kind_count(&self, kind: &Kind) -> usize {
         match kind {
             Kind::Static | Kind::Field => match &self.table.get(CLASS_TABLE_KEY) {
                 Some(class_table) => {
