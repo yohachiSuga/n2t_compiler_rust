@@ -1,6 +1,7 @@
 use std::{
     env::var,
-    io::{BufRead, Read, Write},
+    fs::File,
+    io::{BufRead, BufWriter, Read, Write},
     process::id,
 };
 
@@ -13,6 +14,7 @@ use crate::{
     symbol::Symbol,
     symbolTable::{self, Kind, SymbolElement, SymbolTable},
     tokenType::TokenType,
+    vmWriter::VMWriter,
     EmitOptions,
 };
 
@@ -251,6 +253,7 @@ struct ClassNameContext<'a> {
 pub struct CompilerEngine<R: BufRead, W> {
     tokenizer: JackTokenizer<R>,
     writer: W,
+    vm_writer: VMWriter<W>,
     emits: EmitOptions,
     symbol_table: SymbolTable,
     current_class_name: Option<String>,
@@ -261,13 +264,19 @@ where
     R: Read + BufRead,
     W: Write,
 {
-    pub fn new(reader: R, writer: W, emits: EmitOptions) -> CompilerEngine<R, W> {
+    pub fn new(
+        reader: R,
+        writer: W,
+        vm_writer: VMWriter<W>,
+        emits: EmitOptions,
+    ) -> CompilerEngine<R, W> {
         CompilerEngine {
             tokenizer: JackTokenizer::new(reader),
-            writer,
-            emits,
+            writer: writer,
+            vm_writer: vm_writer,
             symbol_table: SymbolTable::new(),
             current_class_name: None,
+            emits,
         }
     }
 
@@ -1309,7 +1318,7 @@ mod tests {
         process::Command,
     };
 
-    use crate::EmitOptions;
+    use crate::{vmWriter::VMWriter, EmitOptions};
 
     use super::CompilerEngine;
 
@@ -1349,9 +1358,10 @@ mod tests {
         for (i, input) in inputs.iter().enumerate() {
             let reader = BufReader::new(File::open(input).unwrap());
             let writer = BufWriter::new(File::create(outputs.get(i).unwrap()).unwrap());
+            let vm_writer = VMWriter::new(BufWriter::new(File::open("/dev/null").unwrap()));
             {
                 let emits = EmitOptions::new(&vec!["xml".to_string()]);
-                let mut engine = CompilerEngine::new(reader, writer, emits);
+                let mut engine = CompilerEngine::new(reader, writer, vm_writer, emits);
                 engine.compile_class();
             }
             let mut cmd = Command::new("diff");
@@ -1388,9 +1398,51 @@ mod tests {
         for (i, input) in inputs.iter().enumerate() {
             let reader = BufReader::new(File::open(input).unwrap());
             let writer = BufWriter::new(File::create(outputs.get(i).unwrap()).unwrap());
+            let vm_writer = VMWriter::new(BufWriter::new(File::open("/dev/null").unwrap()));
             {
                 let emits = EmitOptions::new(&vec!["xml".to_string(), "ex-xml".to_string()]);
-                let mut engine = CompilerEngine::new(reader, writer, emits);
+                let mut engine = CompilerEngine::new(reader, writer, vm_writer, emits);
+                engine.compile_class();
+            }
+        }
+    }
+
+    #[test]
+    fn test_compiler_engine_vm() {
+        env_logger::try_init();
+        let inputs = vec![
+            "./Seven/Main.jack",
+            // "./ExpressionLessSquare/Main.jack",
+            // "./ExpressionLessSquare/Square.jack",
+            // "./ExpressionLessSquare/SquareGame.jack",
+            // "./ArrayTest/Main.jack",
+            // "./Square/Main.jack",
+            // "./Square/Square.jack",
+            // "./Square/SquareGame.jack",
+            // "./bankaccount.jack",
+        ];
+
+        let outputs = vec![
+            "./Seven/Main.vm.out",
+            // "./ExpressionLessSquare/Main.out.ex.xml",
+            // "./ExpressionLessSquare/Square.out.ex.xml",
+            // "./ExpressionLessSquare/SquareGame.out.ex.xml",
+            // "./ArrayTest/Main.out.ex.xml",
+            // "./Square/Main.out.ex.xml",
+            // "./Square/Square.out.ex.xml",
+            // "./Square/SquareGame.out.ex.xml",
+            // "./bankaccount.out.ex.xml",
+        ];
+
+        for (i, input) in inputs.iter().enumerate() {
+            let reader = BufReader::new(File::open(input).unwrap());
+            let vm_writer = VMWriter::new(BufWriter::new(
+                File::create(outputs.get(i).unwrap()).unwrap(),
+            ));
+            let dev_null_writer = BufWriter::new(File::open("/dev/null").unwrap());
+            {
+                let emits = EmitOptions::new(&vec!["vm".to_string()]);
+                let mut engine = CompilerEngine::new(reader, dev_null_writer, vm_writer, emits);
                 engine.compile_class();
             }
         }

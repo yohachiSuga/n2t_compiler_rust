@@ -2,12 +2,13 @@ use std::{
     fs::{self, File},
     io::{BufReader, BufWriter},
     path::Path,
+    thread::panicking,
 };
 
 use clap::Parser;
 use log::{debug, info};
 
-use crate::compilerEngine::CompilerEngine;
+use crate::{compilerEngine::CompilerEngine, vmWriter::VMWriter};
 
 mod compilerEngine;
 mod error;
@@ -61,6 +62,10 @@ impl EmitOptions {
                 info!("vm is enabled");
                 emit_vm = true;
             }
+        }
+
+        if emit_vm && (emit_xml || emit_ex_xml) {
+            panic!("does not emit vm and xml at the same time.");
         }
 
         EmitOptions {
@@ -118,10 +123,24 @@ fn internal_main(args: Args) {
         let emits = EmitOptions::new(&args.emit);
         debug!("emits: {:?}", emits);
 
-        let out = Path::new(&file).with_extension("out.xml");
-        let reader = BufReader::new(File::open(file).unwrap());
-        let writer = BufWriter::new(File::create(out).unwrap());
-        let mut engine = CompilerEngine::new(reader, writer, emits);
+        let reader = BufReader::new(File::open(&file).unwrap());
+        let writer;
+        let vm_writer;
+        {
+            if emits.emit_extend_xml || emits.emit_xml {
+                let out = Path::new(&file).with_extension("out.xml");
+                writer = BufWriter::new(File::create(out).unwrap());
+                vm_writer = VMWriter::new(BufWriter::new(File::open("/dev/null").unwrap()));
+            } else if emits.emit_vm {
+                let out = Path::new(&file).with_extension("out.vm");
+                vm_writer = VMWriter::new(BufWriter::new(File::create(out).unwrap()));
+                writer = BufWriter::new(File::open("/dev/null").unwrap());
+            } else {
+                panic!("cannot emit xml and vm at the same time.")
+            }
+        }
+
+        let mut engine = CompilerEngine::new(reader, writer, vm_writer, emits);
         engine.compile_class();
     }
 }
