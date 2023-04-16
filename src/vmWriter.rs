@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use crate::symbol::Symbol;
+
 #[derive(
     strum_macros::EnumString,
     strum_macros::Display,
@@ -50,6 +52,28 @@ pub enum Command {
     OR,
     #[strum(serialize = "not")]
     NOT,
+}
+
+impl From<Symbol> for Command {
+    fn from(value: Symbol) -> Self {
+        match value {
+            Symbol::plus => Command::ADD,
+            Symbol::minus => Command::SUB,
+            // call multiply
+            // Symbol::star =>
+            // call devide
+            // Symbol::slash => todo!(),
+            Symbol::ampersand => Command::AND,
+            Symbol::pipe => Command::OR,
+            Symbol::lt => Command::LT,
+            Symbol::bt => Command::GT,
+            Symbol::equal => Command::EQ,
+            Symbol::tilde => Command::NOT,
+            _ => {
+                panic!("cannot convert to command")
+            }
+        }
+    }
 }
 
 pub struct VMWriter<W> {

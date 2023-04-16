@@ -1,9 +1,5 @@
-use std::{
-    env::var,
-    fs::File,
-    io::{BufRead, BufWriter, Read, Write},
-    process::id,
-};
+use core::panic;
+use std::io::{BufRead, Read, Write};
 
 use log::{debug, info};
 
@@ -12,9 +8,9 @@ use crate::{
     jackTokenizer::JackTokenizer,
     keyword::KeyWord,
     symbol::Symbol,
-    symbolTable::{self, Kind, SymbolElement, SymbolTable},
+    symbolTable::{Kind, SymbolElement, SymbolTable},
     tokenType::TokenType,
-    vmWriter::VMWriter,
+    vmWriter::{Command, Segment, VMWriter},
     EmitOptions,
 };
 
@@ -258,6 +254,7 @@ pub struct CompilerEngine<R: BufRead, W> {
     symbol_table: SymbolTable,
     current_class_name: Option<String>,
     current_subroutine_name: Option<String>,
+    current_subroutine_ret_type: Option<KeyWord>,
 }
 
 impl<R, W> CompilerEngine<R, W>
@@ -278,6 +275,7 @@ where
             symbol_table: SymbolTable::new(),
             current_class_name: None,
             current_subroutine_name: None,
+            current_subroutine_ret_type: None,
             emits,
         }
     }
@@ -971,8 +969,11 @@ where
         if self.check_void() {
             advance_token!(self.tokenizer);
             write_keyword_xml!(self, KeyWord::VOID);
+
+            self.current_subroutine_ret_type = Some(KeyWord::VOID);
         } else {
-            self.compile_type();
+            let return_type = self.compile_type();
+            self.current_subroutine_ret_type = Some(return_type.unwrap());
         }
         self.compile_subroutine_name(None);
 
@@ -1029,10 +1030,12 @@ where
         };
 
         // write func or class.func
+        let mut call_func_name = String::from("");
         {
             if is_compile_subroutine_name {
                 self.compile_subroutine_name(Some(&id));
                 // current token shall be already left_bracket.
+                call_func_name = format!("{}", self.current_subroutine_name.as_ref().unwrap());
             }
 
             if is_compile_class_name {
@@ -1044,11 +1047,24 @@ where
                 self.compile_subroutine_name(None);
                 // current token is not left_bracket, so need to advance.
                 advance_token!(self.tokenizer);
+
+                call_func_name =
+                    format!("{}.{}", id, self.current_subroutine_name.as_ref().unwrap());
             }
         }
         write_symbol_xml!(self, Symbol::left_bracket);
         // exp list
-        self.compile_explist();
+        let exp_counter = self.compile_explist();
+
+        // write call f
+        if self.emits.emit_vm {
+            self.vm_writer
+                .write_call(&call_func_name, exp_counter as u32);
+
+            // store function return
+            // TODO: fine to pop temp 0 always?
+            self.vm_writer.write_pop(Segment::TEMP, 0);
+        }
 
         advance_and_write_symbol!(
             self,
@@ -1107,10 +1123,44 @@ where
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
         write_xml_end_tag!(self, tagname);
+
+        if self.emits.emit_vm {
+            match &self.current_subroutine_ret_type {
+                Some(keyword) => match keyword {
+                    KeyWord::VOID => {
+                        self.vm_writer.write_push(Segment::CONST, 0);
+                    }
+                    _ => {
+                        info!("keyword: {}", keyword);
+                        todo!();
+                    }
+                },
+                None => todo!(),
+            }
+            self.vm_writer.write_return();
+        }
     }
 
     fn check_exp(&mut self) -> bool {
         self.check_term()
+    }
+
+    fn write_op(&mut self, symbol: Symbol) {
+        match symbol {
+            Symbol::plus
+            | Symbol::minus
+            | Symbol::ampersand
+            | Symbol::pipe
+            | Symbol::lt
+            | Symbol::bt
+            | Symbol::equal => {
+                self.vm_writer
+                    .write_arithmetic(Command::from(symbol.clone()));
+            }
+            Symbol::star => self.vm_writer.write_call("Math.multiply", 2),
+            Symbol::slash => self.vm_writer.write_call("Math.devide", 2),
+            _ => panic!("{} is not opeator.", symbol),
+        }
     }
 
     fn compile_exp(&mut self) {
@@ -1122,13 +1172,27 @@ where
 
         while self.check_op() {
             advance_token!(self.tokenizer);
+            let mut is_term = false;
+            let captured_symbol;
             match self.tokenizer.token_type() {
                 TokenType::SYMBOL(symbol) => {
+                    // this symbol shall be op
                     write_symbol_xml!(self, symbol);
-                    self.compile_term();
+                    is_term = true;
+                    captured_symbol = symbol.clone();
                 }
                 _ => {
                     panic!("not operator");
+                }
+            }
+
+            if is_term {
+                self.compile_term();
+
+                // TODO: write op symbol for RPN or write call M
+                if self.emits.emit_vm {
+                    let symbol = captured_symbol.clone();
+                    self.write_op(symbol);
                 }
             }
         }
@@ -1157,12 +1221,14 @@ where
         result
     }
 
-    fn compile_explist(&mut self) {
+    fn compile_explist(&mut self) -> usize {
+        let mut exp_counter = 0;
         info!("parse expressionList");
         let tagname = "expressionList";
         write_xml_start_tag!(self, tagname);
 
         while self.check_exp() {
+            exp_counter += 1;
             self.compile_exp();
 
             advance_token!(self.tokenizer);
@@ -1184,6 +1250,7 @@ where
         }
 
         write_xml_end_tag!(self, tagname);
+        exp_counter
     }
 
     fn compile_term(&mut self) {
@@ -1219,6 +1286,7 @@ where
                                 is_advance: false,
                                 token: Some(&identifier),
                             };
+                            // TODO: push var name
                             self.compile_var_name(var_name_ctx);
                             self.tokenizer.back();
                         }
@@ -1231,6 +1299,7 @@ where
                             is_advance: false,
                             token: Some(&identifier),
                         };
+                        // TODO: push var name
                         self.compile_var_name(var_name_ctx);
 
                         self.tokenizer.back();
@@ -1245,6 +1314,7 @@ where
                         is_advance: false,
                         token: Some(&identifier),
                     };
+                    // TODO: push var name
                     self.compile_var_name(var_name_ctx);
 
                     write_symbol_xml!(self, Symbol::left_square_bracket);
@@ -1267,6 +1337,8 @@ where
                 write_str_xml!(self, string);
             }
             TokenType::INT_CONST(num) => {
+                // TODO: what is maximum value of integer?
+                self.vm_writer.write_push(Segment::CONST, *num as u32);
                 write_int_xml!(self, num);
             }
             TokenType::SYMBOL(symbol) => {
@@ -1437,6 +1509,18 @@ mod tests {
             // "./bankaccount.jack",
         ];
 
+        let comps = vec![
+            "./Seven/Main.vm",
+            // "./ExpressionLessSquare/Main.out.ex.xml",
+            // "./ExpressionLessSquare/Square.out.ex.xml",
+            // "./ExpressionLessSquare/SquareGame.out.ex.xml",
+            // "./ArrayTest/Main.out.ex.xml",
+            // "./Square/Main.out.ex.xml",
+            // "./Square/Square.out.ex.xml",
+            // "./Square/SquareGame.out.ex.xml",
+            // "./bankaccount.out.ex.xml",
+        ];
+
         let outputs = vec![
             "./Seven/Main.vm.out",
             // "./ExpressionLessSquare/Main.out.ex.xml",
@@ -1460,6 +1544,10 @@ mod tests {
                 let mut engine = CompilerEngine::new(reader, dev_null_writer, vm_writer, emits);
                 engine.compile_class();
             }
+
+            let mut cmd = Command::new("diff");
+            cmd.args(["-w", &outputs[i], comps[i]]);
+            assert!(cmd.status().unwrap().success());
         }
     }
 }
