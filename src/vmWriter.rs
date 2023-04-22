@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::symbol::Symbol;
+use crate::{symbol::Symbol, symbolTable::Kind};
 
 #[derive(
     strum_macros::EnumString,
@@ -25,6 +25,17 @@ pub enum Segment {
     POINTER,
     #[strum(serialize = "temp")]
     TEMP,
+}
+
+impl From<&Kind> for Segment {
+    fn from(value: &Kind) -> Self {
+        match value {
+            Kind::Static => Segment::STATIC,
+            Kind::Field => Segment::THIS,
+            Kind::Argument => Segment::ARG,
+            Kind::Var => Segment::LOCAL,
+        }
+    }
 }
 
 #[derive(

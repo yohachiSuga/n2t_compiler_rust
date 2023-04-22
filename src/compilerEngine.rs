@@ -635,12 +635,13 @@ where
             advance_token!(self.tokenizer);
             match self.tokenizer.token_type() {
                 TokenType::IDENTIFIER(id) => {
+                    let result = self.symbol_table.define(
+                        id.to_string(),
+                        Kind::from(keyword),
+                        type_keyword.to_string(),
+                    );
+
                     if self.emits.is_emit_ex_xml() {
-                        let result = self.symbol_table.define(
-                            id.to_string(),
-                            Kind::from(keyword),
-                            type_keyword.to_string(),
-                        );
                         let content = match result {
                             Ok(element) => {
                                 generate_symbol_xml_presence_from_symbol(id, element, true)
@@ -688,7 +689,7 @@ where
         }
     }
 
-    fn compile_var_name(&mut self, ctx: VarNameContext) {
+    fn compile_var_name(&mut self, ctx: VarNameContext) -> String {
         let id = if ctx.is_advance {
             advance_token!(self.tokenizer);
             match self.tokenizer.token_type() {
@@ -701,40 +702,37 @@ where
             ctx.token.as_ref().unwrap().to_string()
         };
 
+        // define table
+        let (is_defined, symbol) = match self.symbol_table.find(&id) {
+            Some(result) => {
+                if ctx.is_expected_be_define {
+                    panic!("id : {id} is already defined. something wrong.");
+                }
+                (false, result)
+            }
+            None => {
+                if !ctx.is_expected_be_define {
+                    panic!("id : {id} is expected not to be defined. something wrong.");
+                }
+
+                let result = self.symbol_table.define(
+                    id.to_string(),
+                    ctx.kind.expect("kind shall be defined."),
+                    ctx.type_keyword
+                        .expect("type keyword shall be defined")
+                        .to_string(),
+                );
+                (true, result.unwrap())
+            }
+        };
+
         if self.emits.is_emit_ex_xml() {
-            let content = match self.symbol_table.find(&id) {
-                Some(result) => {
-                    if ctx.is_expected_be_define {
-                        panic!("id : {id} is already defined. something wrong.");
-                    }
-
-                    generate_symbol_xml_presence_from_symbol(&id, result, false)
-                }
-                None => {
-                    if !ctx.is_expected_be_define {
-                        panic!("id : {id} is expected not to be defined. something wrong.");
-                    }
-
-                    let result = self.symbol_table.define(
-                        id.to_string(),
-                        ctx.kind.expect("kind shall be defined."),
-                        ctx.type_keyword
-                            .expect("type keyword shall be defined")
-                            .to_string(),
-                    );
-                    match result {
-                        Ok(element) => generate_symbol_xml_presence_from_symbol(&id, element, true),
-                        Err(err) => {
-                            panic!("symbol is not found, but define error. {:?}", err);
-                        }
-                    }
-                }
-            };
-
+            let content = generate_symbol_xml_presence_from_symbol(&id, symbol, is_defined);
             write_identifier_xml!(self, content);
         } else {
             write_identifier_xml!(self, id);
         }
+        return id;
     }
 
     fn compile_let_statement(&mut self, keyword: &KeyWord) {
@@ -744,7 +742,7 @@ where
         write_xml_start_tag!(self, tagname);
         write_keyword_xml!(self, keyword.to_string());
 
-        self.compile_var_name(VarNameContext {
+        let var_name = self.compile_var_name(VarNameContext {
             is_expected_be_define: false,
             type_keyword: None,
             kind: None,
@@ -787,6 +785,15 @@ where
         write_symbol_xml!(self, equal);
 
         self.compile_exp();
+
+        if self.emits.emit_vm {
+            let symbol = self
+                .symbol_table
+                .find(&var_name)
+                .expect(&format!("{} does not define in symbol table.", var_name));
+            self.vm_writer
+                .write_pop(Segment::LOCAL, symbol.index as u32);
+        }
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
         write_xml_end_tag!(self, tagname);
@@ -851,6 +858,9 @@ where
 
         self.compile_subroutine_call(None);
 
+        if self.emits.emit_vm {
+            self.vm_writer.write_pop(Segment::TEMP, 0);
+        }
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
         write_xml_end_tag!(self, tagname);
     }
@@ -1061,9 +1071,7 @@ where
             self.vm_writer
                 .write_call(&call_func_name, exp_counter as u32);
 
-            // store function return
-            // TODO: fine to pop temp 0 always?
-            self.vm_writer.write_pop(Segment::TEMP, 0);
+            // function return is stored on statement side
         }
 
         advance_and_write_symbol!(
@@ -1132,7 +1140,6 @@ where
                     }
                     _ => {
                         info!("keyword: {}", keyword);
-                        todo!();
                     }
                 },
                 None => todo!(),
@@ -1253,6 +1260,17 @@ where
         exp_counter
     }
 
+    fn write_vm_push_from_symbol_table(&mut self, var_name: &str) {
+        if self.emits.emit_vm {
+            let symbol = self
+                .symbol_table
+                .find(&var_name)
+                .expect(&format!("cannot find {} on symbol table.", var_name));
+            self.vm_writer
+                .write_push(Segment::from(&symbol.kind), symbol.index as u32);
+        }
+    }
+
     fn compile_term(&mut self) {
         // term
         info!("parse term");
@@ -1286,8 +1304,9 @@ where
                                 is_advance: false,
                                 token: Some(&identifier),
                             };
-                            // TODO: push var name
                             self.compile_var_name(var_name_ctx);
+                            self.write_vm_push_from_symbol_table(&identifier);
+
                             self.tokenizer.back();
                         }
                     },
@@ -1299,8 +1318,8 @@ where
                             is_advance: false,
                             token: Some(&identifier),
                         };
-                        // TODO: push var name
                         self.compile_var_name(var_name_ctx);
+                        self.write_vm_push_from_symbol_table(&identifier);
 
                         self.tokenizer.back();
                     }
@@ -1314,8 +1333,8 @@ where
                         is_advance: false,
                         token: Some(&identifier),
                     };
-                    // TODO: push var name
                     self.compile_var_name(var_name_ctx);
+                    self.write_vm_push_from_symbol_table(&identifier);
 
                     write_symbol_xml!(self, Symbol::left_square_bracket);
 
@@ -1331,6 +1350,23 @@ where
             TokenType::KEYWORD(keyword) => {
                 if self.check_keyword_const(keyword) {
                     write_keyword_xml!(self, keyword);
+
+                    if self.emits.emit_vm {
+                        match keyword {
+                            KeyWord::TRUE => {
+                                self.vm_writer.write_push(Segment::CONST, 0);
+                                self.vm_writer.write_arithmetic(Command::NOT);
+                            }
+                            KeyWord::FALSE => {
+                                self.vm_writer.write_push(Segment::CONST, 0);
+                            }
+                            KeyWord::NULL => todo!(),
+                            KeyWord::THIS => todo!(),
+                            _ => {
+                                panic!("keyword shall be true, false, null or this.")
+                            }
+                        }
+                    }
                 }
             }
             TokenType::STRING_CONST(string) => {
@@ -1355,9 +1391,21 @@ where
                             Symbol::right_bracket.to_string()
                         );
                     }
-                    Symbol::minus | Symbol::tilde => {
+                    Symbol::minus => {
                         write_symbol_xml!(self, symbol);
                         self.compile_term();
+
+                        if self.emits.emit_vm {
+                            self.vm_writer.write_arithmetic(Command::NEG);
+                        }
+                    }
+                    Symbol::tilde => {
+                        write_symbol_xml!(self, symbol);
+                        self.compile_term();
+
+                        if self.emits.emit_vm {
+                            self.vm_writer.write_arithmetic(Command::NOT);
+                        }
                     }
                     _ => {
                         panic!("accetable only ( - ~ input: {:?}", symbol);
@@ -1404,6 +1452,8 @@ mod tests {
         io::{BufReader, BufWriter},
         process::Command,
     };
+
+    use log::info;
 
     use crate::{vmWriter::VMWriter, EmitOptions};
 
@@ -1499,6 +1549,7 @@ mod tests {
         env_logger::try_init();
         let inputs = vec![
             "./Seven/Main.jack",
+            "./ConvertToBin/Main.jack",
             // "./ExpressionLessSquare/Main.jack",
             // "./ExpressionLessSquare/Square.jack",
             // "./ExpressionLessSquare/SquareGame.jack",
@@ -1511,6 +1562,7 @@ mod tests {
 
         let comps = vec![
             "./Seven/Main.vm",
+            "./ConvertToBin/Main.vm",
             // "./ExpressionLessSquare/Main.out.ex.xml",
             // "./ExpressionLessSquare/Square.out.ex.xml",
             // "./ExpressionLessSquare/SquareGame.out.ex.xml",
@@ -1523,6 +1575,7 @@ mod tests {
 
         let outputs = vec![
             "./Seven/Main.vm.out",
+            "./ConvertToBin/Main.vm.out",
             // "./ExpressionLessSquare/Main.out.ex.xml",
             // "./ExpressionLessSquare/Square.out.ex.xml",
             // "./ExpressionLessSquare/SquareGame.out.ex.xml",
@@ -1534,6 +1587,7 @@ mod tests {
         ];
 
         for (i, input) in inputs.iter().enumerate() {
+            info!("########### TEST FILE: {input} ################");
             let reader = BufReader::new(File::open(input).unwrap());
             let vm_writer = VMWriter::new(BufWriter::new(
                 File::create(outputs.get(i).unwrap()).unwrap(),
