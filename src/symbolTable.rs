@@ -100,7 +100,10 @@ impl SymbolTable {
                         return Err(CompilerError::new("", ALREADY_DEFINED));
                     }
                     None => {
-                        debug!("find new subroutine variable:{}", name);
+                        debug!(
+                            "find new subroutine variable, name:{}, kind:{},type:{}",
+                            name, kind, _type
+                        );
                         let _name = name.clone();
                         subroutine_table.insert(_name, SymbolElement { index, kind, _type });
                         return Ok(subroutine_table.get(&name).unwrap());

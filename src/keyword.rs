@@ -1,3 +1,5 @@
+use std::fmt;
+
 use strum::IntoEnumIterator;
 
 #[derive(
@@ -5,7 +7,6 @@ use strum::IntoEnumIterator;
     PartialEq,
     Clone,
     strum_macros::EnumString,
-    strum_macros::Display,
     strum_macros::IntoStaticStr,
     strum_macros::EnumIter,
 )]
@@ -54,4 +55,18 @@ pub enum KeyWord {
     THIS,
     // SPECIAL KEYWORD to store identifier and its name
     IDENTIFIER(String),
+}
+
+impl fmt::Display for KeyWord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            KeyWord::BOOLEAN => {
+                write!(f, "boolean")
+            }
+            KeyWord::IDENTIFIER(string) => write!(f, "{}", string),
+            _ => {
+                write!(f, "")
+            }
+        }
+    }
 }

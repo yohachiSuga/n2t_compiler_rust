@@ -1121,6 +1121,7 @@ where
 
         // write func or class.func
         let mut call_func_name = String::from("");
+        let mut is_method = false;
         {
             if is_compile_subroutine_name {
                 self.compile_subroutine_name(Some(&id));
@@ -1138,13 +1139,35 @@ where
                 // current token is not left_bracket, so need to advance.
                 advance_token!(self.tokenizer);
 
-                call_func_name =
-                    format!("{}.{}", id, self.current_subroutine_name.as_ref().unwrap());
+                let symbol = self.symbol_table.find(&id);
+                match symbol {
+                    Some(symbol) => {
+                        if self.emits.emit_vm {
+                            self.vm_writer
+                                .write_push(Segment::from(&symbol.kind), symbol.index as u32);
+                        }
+                        call_func_name = format!(
+                            "{}.{}",
+                            symbol._type,
+                            self.current_subroutine_name.as_ref().unwrap()
+                        );
+                        is_method = true;
+                    }
+                    None => {
+                        call_func_name =
+                            format!("{}.{}", id, self.current_subroutine_name.as_ref().unwrap());
+                    }
+                };
             }
         }
         write_symbol_xml!(self, Symbol::left_bracket);
         // exp list
-        let exp_counter = self.compile_explist();
+        let mut exp_counter = self.compile_explist();
+
+        // to add 'this'
+        if is_method {
+            exp_counter += 1;
+        }
 
         // write call f
         if self.emits.emit_vm {
@@ -1540,7 +1563,7 @@ mod tests {
     use super::CompilerEngine;
 
     #[test]
-    fn test_compiler_engine() {
+    fn test_compiler_engine_xml() {
         env_logger::try_init();
         let inputs = vec![
             "./ExpressionLessSquare/Main.jack",
@@ -1634,7 +1657,7 @@ mod tests {
             // "./ExpressionLessSquare/Square.jack",
             // "./ExpressionLessSquare/SquareGame.jack",
             // "./ArrayTest/Main.jack",
-            // "./Square/Main.jack",
+            "./Square/Main.jack",
             // "./Square/Square.jack",
             // "./Square/SquareGame.jack",
             // "./bankaccount.jack",
@@ -1647,9 +1670,9 @@ mod tests {
             // "./ExpressionLessSquare/Square.out.ex.xml",
             // "./ExpressionLessSquare/SquareGame.out.ex.xml",
             // "./ArrayTest/Main.out.ex.xml",
-            // "./Square/Main.out.ex.xml",
-            // "./Square/Square.out.ex.xml",
-            // "./Square/SquareGame.out.ex.xml",
+            "./Square/Main.vm",
+            // "./Square/Square.vm",
+            // "./Square/SquareGame.vm",
             // "./bankaccount.out.ex.xml",
         ];
 
@@ -1660,9 +1683,9 @@ mod tests {
             // "./ExpressionLessSquare/Square.out.ex.xml",
             // "./ExpressionLessSquare/SquareGame.out.ex.xml",
             // "./ArrayTest/Main.out.ex.xml",
-            // "./Square/Main.out.ex.xml",
-            // "./Square/Square.out.ex.xml",
-            // "./Square/SquareGame.out.ex.xml",
+            "./Square/Main.vm.out",
+            // "./Square/Square.vm.out",
+            // "./Square/SquareGame.vm.out",
             // "./bankaccount.out.ex.xml",
         ];
 
@@ -1685,3 +1708,9 @@ mod tests {
         }
     }
 }
+
+// Square
+// OK main.main (xml test is broken??)
+// NOT main.others.
+// NOT Square.jack
+// NOT squareGame.jack
