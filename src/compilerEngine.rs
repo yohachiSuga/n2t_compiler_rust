@@ -246,6 +246,14 @@ struct ClassNameContext<'a> {
     is_advance: bool, // if is_advance is set to true, advance and use next token instead of name
 }
 
+struct IfContext {
+    counter: usize,
+}
+
+struct WhileContext {
+    counter: usize,
+}
+
 pub struct CompilerEngine<R: BufRead, W> {
     tokenizer: JackTokenizer<R>,
     writer: W,
@@ -255,6 +263,13 @@ pub struct CompilerEngine<R: BufRead, W> {
     current_class_name: Option<String>,
     current_subroutine_name: Option<String>,
     current_subroutine_ret_type: Option<KeyWord>,
+    if_ctx: IfContext,
+    while_ctx: WhileContext,
+}
+
+enum IfWhile {
+    IF,
+    WHILE,
 }
 
 impl<R, W> CompilerEngine<R, W>
@@ -277,6 +292,8 @@ where
             current_subroutine_name: None,
             current_subroutine_ret_type: None,
             emits,
+            if_ctx: IfContext { counter: 0 },
+            while_ctx: WhileContext { counter: 0 },
         }
     }
 
@@ -536,10 +553,22 @@ where
         write_xml_end_tag!(self, tagname);
     }
 
-    fn compile_while_and_if(&mut self, keyword: &str) {
+    fn compile_while_and_if(&mut self, keyword: &str, if_while: &IfWhile) {
         write_keyword_xml!(self, keyword.to_string());
 
         advance_and_write_symbol!(self, Symbol::left_bracket, Symbol::left_bracket.to_string());
+
+        if self.emits.emit_vm {
+            match if_while {
+                IfWhile::IF => {
+                    // do nothing
+                }
+                IfWhile::WHILE => {
+                    self.vm_writer
+                        .write_label(&format!("WHILE_EXP{}", self.while_ctx.counter - 1));
+                }
+            }
+        }
 
         self.compile_exp();
 
@@ -555,7 +584,42 @@ where
             Symbol::left_curly_bracket.to_string()
         );
 
+        if self.emits.emit_vm {
+            match if_while {
+                IfWhile::IF => {
+                    self.vm_writer
+                        .write_if(&format!("IF_TRUE{}", self.if_ctx.counter - 1));
+                    // TODO: handle if `else` does not defined
+                    self.vm_writer
+                        .write_goto(&format!("IF_FALSE{}", self.if_ctx.counter - 1));
+                    self.vm_writer
+                        .write_label(&format!("IF_TRUE{}", self.if_ctx.counter - 1));
+                }
+                IfWhile::WHILE => {
+                    // because true = -1
+                    self.vm_writer.write_arithmetic(Command::NOT);
+                    self.vm_writer
+                        .write_if(&format!("WHILE_END{}", self.while_ctx.counter - 1));
+                }
+            }
+        }
+
         self.compile_statements();
+
+        if self.emits.emit_vm {
+            match if_while {
+                IfWhile::IF => {
+                    self.vm_writer
+                        .write_goto(&format!("IF_END{}", self.if_ctx.counter - 1));
+                }
+                IfWhile::WHILE => {
+                    self.vm_writer
+                        .write_goto(&format!("WHILE_EXP{}", self.while_ctx.counter - 1));
+                    self.vm_writer
+                        .write_label(&format!("WHILE_END{}", self.while_ctx.counter - 1));
+                }
+            }
+        }
 
         advance_and_write_symbol!(
             self,
@@ -792,7 +856,7 @@ where
                 .find(&var_name)
                 .expect(&format!("{} does not define in symbol table.", var_name));
             self.vm_writer
-                .write_pop(Segment::LOCAL, symbol.index as u32);
+                .write_pop(Segment::from(&symbol.kind), symbol.index as u32);
         }
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
@@ -804,7 +868,9 @@ where
         info!("parse if ");
         let tagname = "ifStatement";
         write_xml_start_tag!(self, tagname);
-        self.compile_while_and_if(&keyword.to_string());
+
+        self.if_ctx.counter += 1;
+        self.compile_while_and_if(&keyword.to_string(), &IfWhile::IF);
 
         // check else
         advance_token!(self.tokenizer);
@@ -820,6 +886,11 @@ where
                         Symbol::left_curly_bracket,
                         Symbol::left_curly_bracket.to_string()
                     );
+
+                    if self.emits.emit_vm {
+                        self.vm_writer
+                            .write_label(&format!("IF_FALSE{}", self.if_ctx.counter - 1));
+                    }
 
                     self.compile_statements();
 
@@ -839,6 +910,13 @@ where
                 info!("no keyword after if.");
             }
         }
+
+        if self.emits.emit_vm {
+            self.vm_writer
+                .write_label(&format!("IF_END{}", self.if_ctx.counter - 1));
+        }
+        self.if_ctx.counter -= 1;
+
         write_xml_end_tag!(self, tagname);
     }
 
@@ -846,7 +924,9 @@ where
         // while (exp){states}
         let tagname = "whileStatement";
         write_xml_start_tag!(self, tagname);
-        self.compile_while_and_if(&keyword.to_string());
+        self.while_ctx.counter += 1;
+        self.compile_while_and_if(&keyword.to_string(), &IfWhile::WHILE);
+        self.while_ctx.counter -= 1;
         write_xml_end_tag!(self, tagname);
     }
 
