@@ -609,6 +609,9 @@ where
             }
         }
 
+        // to save counter
+        let current_while_ctx_counter = self.while_ctx.counter;
+
         self.compile_statements();
 
         if self.emits.emit_vm {
@@ -618,9 +621,9 @@ where
                 }
                 IfWhile::WHILE => {
                     self.vm_writer
-                        .write_goto(&format!("WHILE_EXP{}", self.while_ctx.counter - 1));
+                        .write_goto(&format!("WHILE_EXP{}", current_while_ctx_counter - 1));
                     self.vm_writer
-                        .write_label(&format!("WHILE_END{}", self.while_ctx.counter - 1));
+                        .write_label(&format!("WHILE_END{}", current_while_ctx_counter - 1));
                 }
             }
         }
@@ -890,6 +893,8 @@ where
         write_xml_start_tag!(self, tagname);
 
         self.if_ctx.counter += 1;
+        // counter may change after self.compile_statements
+        let current_if_ctx_counter = self.if_ctx.counter;
         self.compile_while_and_if(&keyword.to_string(), &IfWhile::IF);
 
         // check else
@@ -911,9 +916,9 @@ where
 
                     if self.emits.emit_vm {
                         self.vm_writer
-                            .write_goto(&format!("IF_END{}", self.if_ctx.counter - 1));
+                            .write_goto(&format!("IF_END{}", current_if_ctx_counter - 1));
                         self.vm_writer
-                            .write_label(&format!("IF_FALSE{}", self.if_ctx.counter - 1));
+                            .write_label(&format!("IF_FALSE{}", current_if_ctx_counter - 1));
                     }
 
                     self.compile_statements();
@@ -938,13 +943,12 @@ where
         if self.emits.emit_vm {
             if is_else_exist {
                 self.vm_writer
-                    .write_label(&format!("IF_END{}", self.if_ctx.counter - 1));
+                    .write_label(&format!("IF_END{}", current_if_ctx_counter - 1));
             } else {
                 self.vm_writer
-                    .write_label(&format!("IF_FALSE{}", self.if_ctx.counter - 1));
+                    .write_label(&format!("IF_FALSE{}", current_if_ctx_counter - 1));
             }
         }
-        self.if_ctx.counter -= 1;
 
         write_xml_end_tag!(self, tagname);
     }
@@ -955,7 +959,6 @@ where
         write_xml_start_tag!(self, tagname);
         self.while_ctx.counter += 1;
         self.compile_while_and_if(&keyword.to_string(), &IfWhile::WHILE);
-        self.while_ctx.counter -= 1;
         write_xml_end_tag!(self, tagname);
     }
 
@@ -1098,6 +1101,9 @@ where
         );
 
         self.symbol_table.start_subroutine();
+        // clear context
+        self.if_ctx.counter = 0;
+        self.while_ctx.counter = 0;
 
         if self.check_void() {
             advance_token!(self.tokenizer);
@@ -1771,7 +1777,7 @@ mod tests {
             // "./ArrayTest/Main.jack",
             "./Square/Main.jack",
             "./Square/Square.jack",
-            // "./Square/SquareGame.jack",
+            "./Square/SquareGame.jack",
             // "./bankaccount.jack",
         ];
 
@@ -1784,7 +1790,7 @@ mod tests {
             // "./ArrayTest/Main.out.ex.xml",
             "./Square/Main.vm",
             "./Square/Square.vm",
-            // "./Square/SquareGame.vm",
+            "./Square/SquareGame.vm",
             // "./bankaccount.out.ex.xml",
         ];
 
@@ -1797,7 +1803,7 @@ mod tests {
             // "./ArrayTest/Main.out.ex.xml",
             "./Square/Main.vm.out",
             "./Square/Square.vm.out",
-            // "./Square/SquareGame.vm.out",
+            "./Square/SquareGame.vm.out",
             // "./bankaccount.out.ex.xml",
         ];
 
