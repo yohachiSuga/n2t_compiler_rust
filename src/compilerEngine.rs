@@ -1788,6 +1788,7 @@ mod tests {
             "./Pong/Ball.jack",
             "./Pong/Bat.jack",
             "./Pong/PongGame.jack",
+            "./ComplexArrays/Main.jack",
         ];
 
         let comps = vec![
@@ -1805,6 +1806,7 @@ mod tests {
             "./Pong/Ball.vm",
             "./Pong/Bat.vm",
             "./Pong/PongGame.vm",
+            "./ComplexArrays/Main.vm",
         ];
 
         let outputs = vec![
@@ -1822,6 +1824,7 @@ mod tests {
             "./Pong/Ball.vm.out",
             "./Pong/Bat.vm.out",
             "./Pong/PongGame.vm.out",
+            "./ComplexArrays/Main.vm.out",
             // "./bankaccount.out.ex.xml",
         ];
 
