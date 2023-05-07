@@ -9,7 +9,7 @@ use log::{debug, info};
 use crate::{
     error::ALREADY_DEFINED,
     jackTokenizer::JackTokenizer,
-    keyword::KeyWord,
+    keyword::{self, KeyWord},
     symbol::Symbol,
     symbolTable::{Kind, SymbolElement, SymbolTable},
     tokenType::TokenType,
@@ -265,6 +265,7 @@ pub struct CompilerEngine<R: BufRead, W> {
     symbol_table: SymbolTable,
     current_class_name: Option<String>,
     current_subroutine_name: Option<String>,
+    current_subroutine_type: Option<String>,
     current_subroutine_ret_type: Option<KeyWord>,
     if_ctx: IfContext,
     while_ctx: WhileContext,
@@ -293,6 +294,7 @@ where
             symbol_table: SymbolTable::new(),
             current_class_name: None,
             current_subroutine_name: None,
+            current_subroutine_type: None,
             current_subroutine_ret_type: None,
             emits,
             if_ctx: IfContext { counter: 0 },
@@ -1062,8 +1064,17 @@ where
         advance_token!(self.tokenizer);
         match self.tokenizer.token_type() {
             TokenType::KEYWORD(keyword) => match keyword {
-                KeyWord::METHOD | KeyWord::FUNCTION | KeyWord::CONSTRUCTOR => {
+                KeyWord::METHOD => {
                     write_keyword_xml!(self, keyword);
+                    self.current_subroutine_type = Some(keyword.to_string());
+                }
+                KeyWord::FUNCTION => {
+                    write_keyword_xml!(self, keyword);
+                    self.current_subroutine_type = Some(keyword.to_string());
+                }
+                KeyWord::CONSTRUCTOR => {
+                    write_keyword_xml!(self, keyword);
+                    self.current_subroutine_type = Some(keyword.to_string());
                 }
                 _ => {
                     panic!("keyword but only constructor or function or method are acceptable.")
@@ -1073,6 +1084,11 @@ where
                 panic!("only constructor or function or method are acceptable.")
             }
         }
+        debug!(
+            "########### CURRENT_SUBROUTINE_TYPE{}",
+            self.current_subroutine_type.as_ref().unwrap().to_string()
+        );
+
         self.symbol_table.start_subroutine();
 
         if self.check_void() {
@@ -1139,13 +1155,26 @@ where
         };
 
         // write func or class.func
+        // TODO: need to handle `func` (But this is defined as method always??)
         let mut call_func_name = String::from("");
         let mut is_method = false;
         {
             if is_compile_subroutine_name {
                 self.compile_subroutine_name(Some(&id));
                 // current token shall be already left_bracket.
-                call_func_name = format!("{}", self.current_subroutine_name.as_ref().unwrap());
+
+                // if no class name, it shall be method.
+                call_func_name = format!(
+                    "{}.{}",
+                    self.current_class_name.as_ref().unwrap(),
+                    self.current_subroutine_name.as_ref().unwrap()
+                );
+                is_method = true;
+
+                // push `this` as arguments
+                if self.emits.emit_vm {
+                    self.vm_writer.write_push(Segment::POINTER, 0);
+                }
             }
 
             if is_compile_class_name {
@@ -1226,6 +1255,30 @@ where
                 ),
                 self.symbol_table.kind_count(&Kind::Var) as u32,
             );
+
+            // special snippet for ctor/method.
+            if self.current_subroutine_type.is_some() {
+                if self.current_subroutine_type.as_ref().unwrap()
+                    == &KeyWord::CONSTRUCTOR.to_string()
+                {
+                    debug!(
+                        "write vm for ctor args:{}",
+                        self.symbol_table.kind_count(&Kind::Argument)
+                    );
+                    self.vm_writer.write_push(
+                        Segment::CONST,
+                        self.symbol_table.kind_count(&Kind::Argument) as u32,
+                    );
+                    self.vm_writer.write_call("Memory.alloc", 1);
+                    self.vm_writer.write_pop(Segment::POINTER, 0);
+                }
+
+                if self.current_subroutine_type.as_ref().unwrap() == &KeyWord::METHOD.to_string() {
+                    debug!("write vm for method");
+                    self.vm_writer.write_push(Segment::ARG, 0);
+                    self.vm_writer.write_pop(Segment::POINTER, 0);
+                }
+            }
         }
 
         // statements
@@ -1499,7 +1552,9 @@ where
                             KeyWord::NULL => {
                                 self.vm_writer.write_push(Segment::CONST, 0);
                             }
-                            KeyWord::THIS => todo!(),
+                            KeyWord::THIS => {
+                                self.vm_writer.write_push(Segment::POINTER, 0);
+                            }
                             _ => {
                                 panic!("keyword shall be true, false, null or this.")
                             }
@@ -1707,7 +1762,7 @@ mod tests {
             // "./ExpressionLessSquare/SquareGame.jack",
             // "./ArrayTest/Main.jack",
             "./Square/Main.jack",
-            // "./Square/Square.jack",
+            "./Square/Square.jack",
             // "./Square/SquareGame.jack",
             // "./bankaccount.jack",
         ];
@@ -1720,7 +1775,7 @@ mod tests {
             // "./ExpressionLessSquare/SquareGame.out.ex.xml",
             // "./ArrayTest/Main.out.ex.xml",
             "./Square/Main.vm",
-            // "./Square/Square.vm",
+            "./Square/Square.vm",
             // "./Square/SquareGame.vm",
             // "./bankaccount.out.ex.xml",
         ];
@@ -1733,7 +1788,7 @@ mod tests {
             // "./ExpressionLessSquare/SquareGame.out.ex.xml",
             // "./ArrayTest/Main.out.ex.xml",
             "./Square/Main.vm.out",
-            // "./Square/Square.vm.out",
+            "./Square/Square.vm.out",
             // "./Square/SquareGame.vm.out",
             // "./bankaccount.out.ex.xml",
         ];

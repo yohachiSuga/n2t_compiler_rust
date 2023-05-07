@@ -64,7 +64,17 @@ impl fmt::Display for KeyWord {
                 write!(f, "boolean")
             }
             KeyWord::IDENTIFIER(string) => write!(f, "{}", string),
+            KeyWord::CONSTRUCTOR => {
+                write!(f, "constructor")
+            }
+            KeyWord::FUNCTION => {
+                write!(f, "function")
+            }
+            KeyWord::METHOD => {
+                write!(f, "method")
+            }
             _ => {
+                // TODO: impl remainings
                 write!(f, "")
             }
         }
