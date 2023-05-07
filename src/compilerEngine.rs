@@ -1463,7 +1463,9 @@ where
                             KeyWord::FALSE => {
                                 self.vm_writer.write_push(Segment::CONST, 0);
                             }
-                            KeyWord::NULL => todo!(),
+                            KeyWord::NULL => {
+                                self.vm_writer.write_push(Segment::CONST, 0);
+                            }
                             KeyWord::THIS => todo!(),
                             _ => {
                                 panic!("keyword shall be true, false, null or this.")
