@@ -1106,6 +1106,15 @@ where
         self.if_ctx.counter = 0;
         self.while_ctx.counter = 0;
 
+        // if method, add this to argument
+        if self.current_subroutine_type.is_some()
+            && self.current_subroutine_type.as_ref().unwrap() == &KeyWord::METHOD.to_string()
+        {
+            self.symbol_table
+                .define("this".to_string(), Kind::Argument, "".to_string())
+                .expect("register this. but error occurred.");
+        }
+
         if self.check_void() {
             advance_token!(self.tokenizer);
             write_keyword_xml!(self, KeyWord::VOID);
@@ -1775,6 +1784,10 @@ mod tests {
             "./Square/Square.jack",
             "./Square/SquareGame.jack",
             "./Average/Main.jack",
+            "./Pong/Main.jack",
+            "./Pong/Ball.jack",
+            "./Pong/Bat.jack",
+            "./Pong/PongGame.jack",
         ];
 
         let comps = vec![
@@ -1788,7 +1801,10 @@ mod tests {
             "./Square/Square.vm",
             "./Square/SquareGame.vm",
             "./Average/Main.vm",
-            // "./bankaccount.out.ex.xml",
+            "./Pong/Main.vm",
+            "./Pong/Ball.vm",
+            "./Pong/Bat.vm",
+            "./Pong/PongGame.vm",
         ];
 
         let outputs = vec![
@@ -1802,6 +1818,10 @@ mod tests {
             "./Square/Square.vm.out",
             "./Square/SquareGame.vm.out",
             "./Average/Main.vm.out",
+            "./Pong/Main.vm.out",
+            "./Pong/Ball.vm.out",
+            "./Pong/Bat.vm.out",
+            "./Pong/PongGame.vm.out",
             // "./bankaccount.out.ex.xml",
         ];
 
