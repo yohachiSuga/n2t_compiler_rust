@@ -614,8 +614,7 @@ where
         if self.emits.emit_vm {
             match if_while {
                 IfWhile::IF => {
-                    self.vm_writer
-                        .write_goto(&format!("IF_END{}", self.if_ctx.counter - 1));
+                    // do nothing
                 }
                 IfWhile::WHILE => {
                     self.vm_writer
@@ -895,11 +894,13 @@ where
 
         // check else
         advance_token!(self.tokenizer);
+        let mut is_else_exist = false;
         match self.tokenizer.token_type() {
             TokenType::KEYWORD(keyword) => match keyword {
                 KeyWord::ELSE => {
                     // else { states }
                     info!("found else");
+                    is_else_exist = true;
                     write_keyword_xml!(self, keyword.to_string());
 
                     advance_and_write_symbol!(
@@ -909,6 +910,8 @@ where
                     );
 
                     if self.emits.emit_vm {
+                        self.vm_writer
+                            .write_goto(&format!("IF_END{}", self.if_ctx.counter - 1));
                         self.vm_writer
                             .write_label(&format!("IF_FALSE{}", self.if_ctx.counter - 1));
                     }
@@ -933,8 +936,13 @@ where
         }
 
         if self.emits.emit_vm {
-            self.vm_writer
-                .write_label(&format!("IF_END{}", self.if_ctx.counter - 1));
+            if is_else_exist {
+                self.vm_writer
+                    .write_label(&format!("IF_END{}", self.if_ctx.counter - 1));
+            } else {
+                self.vm_writer
+                    .write_label(&format!("IF_FALSE{}", self.if_ctx.counter - 1));
+            }
         }
         self.if_ctx.counter -= 1;
 
