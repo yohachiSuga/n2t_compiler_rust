@@ -1476,6 +1476,19 @@ where
             }
             TokenType::STRING_CONST(string) => {
                 write_str_xml!(self, string);
+
+                if self.emits.emit_vm {
+                    // ctor for string
+                    self.vm_writer
+                        .write_push(Segment::CONST, string.len() as u32);
+                    self.vm_writer.write_call("String.new", 1);
+
+                    // append asciicode char
+                    for c in string.chars() {
+                        self.vm_writer.write_push(Segment::CONST, c as u32);
+                        self.vm_writer.write_call("String.appendChar", 2);
+                    }
+                }
             }
             TokenType::INT_CONST(num) => {
                 // TODO: what is maximum value of integer?
