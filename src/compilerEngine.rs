@@ -839,6 +839,7 @@ where
 
             if self.emits.emit_vm {
                 self.write_vm_push_from_symbol_table(&var_name);
+                self.vm_writer.write_arithmetic(Command::ADD);
             }
 
             advance_and_write_symbol!(
@@ -1532,11 +1533,6 @@ where
 
                     write_symbol_xml!(self, Symbol::left_square_bracket);
 
-                    // to handle array
-                    if self.emits.emit_vm {
-                        self.vm_writer.write_arithmetic(Command::ADD);
-                    }
-
                     self.compile_exp();
 
                     self.write_vm_push_from_symbol_table(&identifier);
@@ -1778,7 +1774,7 @@ mod tests {
             "./Square/Main.jack",
             "./Square/Square.jack",
             "./Square/SquareGame.jack",
-            // "./bankaccount.jack",
+            "./Average/Main.jack",
         ];
 
         let comps = vec![
@@ -1791,6 +1787,7 @@ mod tests {
             "./Square/Main.vm",
             "./Square/Square.vm",
             "./Square/SquareGame.vm",
+            "./Average/Main.vm",
             // "./bankaccount.out.ex.xml",
         ];
 
@@ -1804,6 +1801,7 @@ mod tests {
             "./Square/Main.vm.out",
             "./Square/Square.vm.out",
             "./Square/SquareGame.vm.out",
+            "./Average/Main.vm.out",
             // "./bankaccount.out.ex.xml",
         ];
 
