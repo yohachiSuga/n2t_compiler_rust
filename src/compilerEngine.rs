@@ -1268,7 +1268,7 @@ where
                     .write_arithmetic(Command::from(symbol.clone()));
             }
             Symbol::star => self.vm_writer.write_call("Math.multiply", 2),
-            Symbol::slash => self.vm_writer.write_call("Math.devide", 2),
+            Symbol::slash => self.vm_writer.write_call("Math.divide", 2),
             _ => panic!("{} is not opeator.", symbol),
         }
     }
