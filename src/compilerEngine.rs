@@ -1271,11 +1271,11 @@ where
                 {
                     debug!(
                         "write vm for ctor args:{}",
-                        self.symbol_table.kind_count(&Kind::Argument)
+                        self.symbol_table.kind_count(&Kind::Field)
                     );
                     self.vm_writer.write_push(
                         Segment::CONST,
-                        self.symbol_table.kind_count(&Kind::Argument) as u32,
+                        self.symbol_table.kind_count(&Kind::Field) as u32,
                     );
                     self.vm_writer.write_call("Memory.alloc", 1);
                     self.vm_writer.write_pop(Segment::POINTER, 0);
