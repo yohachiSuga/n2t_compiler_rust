@@ -1,5 +1,8 @@
 use core::panic;
-use std::io::{BufRead, Read, Write};
+use std::{
+    env::var,
+    io::{BufRead, Read, Write},
+};
 
 use log::{debug, info};
 
@@ -823,10 +826,16 @@ where
             }
         };
 
+        let is_handle_array;
         let cand_symbol = if let Symbol::left_square_bracket = &cand_symbol {
+            is_handle_array = true;
             write_symbol_xml!(self, Symbol::left_square_bracket);
 
             self.compile_exp();
+
+            if self.emits.emit_vm {
+                self.write_vm_push_from_symbol_table(&var_name);
+            }
 
             advance_and_write_symbol!(
                 self,
@@ -842,6 +851,7 @@ where
                 }
             }
         } else {
+            is_handle_array = false;
             cand_symbol
         };
 
@@ -851,12 +861,21 @@ where
         self.compile_exp();
 
         if self.emits.emit_vm {
-            let symbol = self
-                .symbol_table
-                .find(&var_name)
-                .expect(&format!("{} does not define in symbol table.", var_name));
-            self.vm_writer
-                .write_pop(Segment::from(&symbol.kind), symbol.index as u32);
+            if is_handle_array {
+                // store current top stack value (If let Y = X, X shall be the top.)
+                self.vm_writer.write_pop(Segment::TEMP, 0);
+
+                self.vm_writer.write_pop(Segment::POINTER, 1);
+                self.vm_writer.write_push(Segment::TEMP, 0);
+                self.vm_writer.write_pop(Segment::THAT, 0);
+            } else {
+                let symbol = self
+                    .symbol_table
+                    .find(&var_name)
+                    .expect(&format!("{} does not define in symbol table.", var_name));
+                self.vm_writer
+                    .write_pop(Segment::from(&symbol.kind), symbol.index as u32);
+            }
         }
 
         advance_and_write_symbol!(self, Symbol::semicolon, Symbol::semicolon.to_string());
@@ -1299,7 +1318,6 @@ where
             if is_term {
                 self.compile_term();
 
-                // TODO: write op symbol for RPN or write call M
                 if self.emits.emit_vm {
                     let symbol = captured_symbol.clone();
                     self.write_op(symbol);
@@ -1369,6 +1387,12 @@ where
                 .symbol_table
                 .find(&var_name)
                 .expect(&format!("cannot find {} on symbol table.", var_name));
+
+            debug!(
+                "write vm push symbol {var_name} kind:{} idx:{}",
+                Segment::from(&symbol.kind),
+                symbol.index
+            );
             self.vm_writer
                 .write_push(Segment::from(&symbol.kind), symbol.index as u32);
         }
@@ -1429,6 +1453,7 @@ where
                 }
 
                 if is_write_exp {
+                    debug!("found [");
                     let var_name_ctx = VarNameContext {
                         is_expected_be_define: false,
                         type_keyword: None,
@@ -1437,12 +1462,20 @@ where
                         token: Some(&identifier),
                     };
                     self.compile_var_name(var_name_ctx);
-                    self.write_vm_push_from_symbol_table(&identifier);
 
                     write_symbol_xml!(self, Symbol::left_square_bracket);
 
+                    // to handle array
+                    if self.emits.emit_vm {
+                        self.vm_writer.write_arithmetic(Command::ADD);
+                    }
+
                     self.compile_exp();
 
+                    self.write_vm_push_from_symbol_table(&identifier);
+                    self.vm_writer.write_arithmetic(Command::ADD);
+                    self.vm_writer.write_pop(Segment::POINTER, 1);
+                    self.vm_writer.write_push(Segment::THAT, 0);
                     advance_and_write_symbol!(
                         self,
                         Symbol::right_square_bracket,
@@ -1534,6 +1567,7 @@ where
                 panic!("not identifier");
             }
         }
+        info!("end parse term");
         write_xml_end_tag!(self, tagname);
     }
 
